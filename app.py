@@ -6,15 +6,16 @@ import sqlite3
 conn = sqlite3.connect("lifting_sessions.db")
 c = conn.cursor()
 
-# Create the tables for athletes and sessions
+# Create the athletes table if it doesn't exist
 c.execute('''
     CREATE TABLE IF NOT EXISTS athletes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
+        name TEXT UNIQUE,
         position TEXT
     )
 ''')
 
+# Create the sessions table if it doesn't exist
 c.execute('''
     CREATE TABLE IF NOT EXISTS sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +26,13 @@ c.execute('''
         FOREIGN KEY(athlete_id) REFERENCES athletes(id)
     )
 ''')
-conn.commit()
+
+# Check if 'athlete_id' column exists in 'sessions' table
+c.execute("PRAGMA table_info(sessions)")
+columns = [info[1] for info in c.fetchall()]
+if "athlete_id" not in columns:
+    c.execute("ALTER TABLE sessions ADD COLUMN athlete_id INTEGER")
+    conn.commit()
 
 # Helper function to get athlete ID
 def get_athlete_id(name):
@@ -61,6 +68,9 @@ if st.button("Log In", key="login_button"):
         st.success(f"Welcome {name}! Your position as {position} has been recorded.")
         athlete_id = get_athlete_id(name)
     else:
+        # Optionally update the position if it might have changed
+        c.execute("UPDATE athletes SET position = ? WHERE id = ?", (position, athlete_id))
+        conn.commit()
         st.success(f"Welcome back, {name}! You play as {position}.")
     
     # Show only their program after login
@@ -68,14 +78,14 @@ if st.button("Log In", key="login_button"):
 
     # Create a form for entering the weights with a unique key
     with st.form(key="weight_entry_form"):
-        df = pd.DataFrame(columns=["Exercise", "Set", "Weight (kg)"])
         rows = []
         for exercise, sets in exercises.items():
             for set_num in range(1, sets + 1):
                 weight = st.number_input(f"{exercise} - Set {set_num} (kg):", min_value=0, step=1, key=f"{exercise}_{set_num}")
                 rows.append({"Exercise": exercise, "Set": set_num, "Weight (kg)": weight})
 
-        df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
+        # Convert the list of rows to a DataFrame
+        df = pd.DataFrame(rows)
 
         # Submit button for logging the session
         submitted = st.form_submit_button("Submit")
@@ -95,6 +105,7 @@ if st.button("Log In", key="login_button"):
         c.execute('''
             SELECT exercise, set_number, weight_kg FROM sessions
             WHERE athlete_id = ?
+            ORDER BY id DESC
         ''', (athlete_id,))
         rows = c.fetchall()
 
