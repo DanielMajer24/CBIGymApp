@@ -50,7 +50,7 @@ st.title("Marlins Team Lifting Weights Tracker")
 name = st.text_input("Enter your name:")
 position = st.text_input("Enter your position:")
 
-if st.button("Log In"):
+if st.button("Log In", key="login_button"):
     # Check if the athlete exists in the database
     athlete_id = get_athlete_id(name)
     
@@ -66,16 +66,16 @@ if st.button("Log In"):
     # Show only their program after login
     st.write("Enter the weights lifted for each set:")
 
-    # Create a form for entering the weights
-    with st.form("weight_entry"):
+    # Create a form for entering the weights with a unique key
+    with st.form(key="weight_entry_form"):
         df = pd.DataFrame({"Exercise": [], "Set": [], "Weight (kg)": []})
         for exercise, sets in exercises.items():
             for set_num in range(1, sets + 1):
                 weight = st.number_input(f"{exercise} - Set {set_num} (kg):", min_value=0, step=1, key=f"{exercise}_{set_num}")
                 df = df.append({"Exercise": exercise, "Set": set_num, "Weight (kg)": weight}, ignore_index=True)
 
-        # Submit button for logging the session
-        submitted = st.form_submit_button("Submit")
+        # Submit button with a unique key for the form
+        submitted = st.form_submit_button("Submit", key="submit_button")
         
         if submitted:
             # Insert the session data into the database
@@ -88,7 +88,7 @@ if st.button("Log In"):
             st.success("Your session has been saved.")
 
     # Show previous sessions for the athlete
-    if st.button("Show Previous Sessions"):
+    if st.button("Show Previous Sessions", key="show_sessions_button"):
         c.execute('''
             SELECT exercise, set_number, weight_kg FROM sessions
             WHERE athlete_id = ?
