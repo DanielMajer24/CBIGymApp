@@ -68,11 +68,14 @@ if st.button("Log In", key="login_button"):
 
     # Create a form for entering the weights with a unique key
     with st.form(key="weight_entry_form"):
-        df = pd.DataFrame({"Exercise": [], "Set": [], "Weight (kg)": []})
+        df = pd.DataFrame(columns=["Exercise", "Set", "Weight (kg)"])
+        rows = []
         for exercise, sets in exercises.items():
             for set_num in range(1, sets + 1):
                 weight = st.number_input(f"{exercise} - Set {set_num} (kg):", min_value=0, step=1, key=f"{exercise}_{set_num}")
-                df = df.append({"Exercise": exercise, "Set": set_num, "Weight (kg)": weight}, ignore_index=True)
+                rows.append({"Exercise": exercise, "Set": set_num, "Weight (kg)": weight})
+
+        df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
 
         # Submit button with a unique key for the form
         submitted = st.form_submit_button("Submit", key="submit_button")
