@@ -77,7 +77,7 @@ if st.button("Log In", key="login_button"):
 
         df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
 
-        # Submit button without the `key` argument
+        # Submit button for logging the session
         submitted = st.form_submit_button("Submit")
         
         if submitted:
@@ -90,14 +90,14 @@ if st.button("Log In", key="login_button"):
             conn.commit()
             st.success("Your session has been saved.")
 
-    # Show previous sessions for the athlete
-    if st.button("Show Previous Sessions", key="show_sessions_button"):
+    # Display previous sessions in a collapsible section
+    with st.expander("Show Previous Sessions"):
         c.execute('''
             SELECT exercise, set_number, weight_kg FROM sessions
             WHERE athlete_id = ?
         ''', (athlete_id,))
         rows = c.fetchall()
-        
+
         if rows:
             previous_sessions = pd.DataFrame(rows, columns=["Exercise", "Set", "Weight (kg)"])
             st.write("Previous Sessions:")
