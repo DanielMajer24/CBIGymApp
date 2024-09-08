@@ -77,8 +77,8 @@ if st.button("Log In", key="login_button"):
 
         df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
 
-        # Submit button with a unique key for the form
-        submitted = st.form_submit_button("Submit", key="submit_button")
+        # Submit button without the `key` argument
+        submitted = st.form_submit_button("Submit")
         
         if submitted:
             # Insert the session data into the database
