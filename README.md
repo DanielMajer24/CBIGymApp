@@ -34,14 +34,18 @@ Designed for Cairns Basketball coaches, players, and staff.
 ---
 
 ## File Structure
-CBI_Gym_App.py                 # Main Streamlit app entry point
-1_Login.py                     # Login & signup page
-2_Athlete_Workouts.py          # Athlete's workout dashboard
-3_Coach_Workout_Plans.py       # Coach's workout/session creation
-4_Coach_Authentication.py      # Coach-only authentication page
-supabase_schema.sql            # (Recommended: Add this file)
-static_redirect/index.html     # Static GitHub Pages redirect (see below)
-README.md                      # This documentation
+
+| File Name                    | Description                                  |
+|------------------------------|----------------------------------------------|
+| CBI_Gym_App.py               | Main Streamlit app entry point               |
+| 1_Login.py                   | Login & signup page                          |
+| 2_Athlete_Workouts.py        | Athlete's workout dashboard                  |
+| 3_Coach_Workout_Plans.py     | Coach's workout/session creation             |
+| 4_Coach_Authentication.py    | Coach-only authentication page               |
+| supabase_schema.sql          | (Recommended: Add this file)                 |
+| static_redirect/index.html   | Static GitHub Pages redirect (see below)     |
+| README.md                    | This documentation                           |
+
 
 
 ---
