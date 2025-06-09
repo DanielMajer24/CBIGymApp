@@ -9,8 +9,8 @@ import os
 
 # --- Load Supabase config ---
 # load_dotenv(dotenv_path=Path("/Users/dmaje23/Documents/dev/envfiles/gymapp/gym_app_secrets.env"))
-SUPABASE_URL = st.secrets("SUPABASE_URL")
-SUPABASE_KEY = st.secrets("SUPABASE_KEY")
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="CBI Gym App", layout="centered")
