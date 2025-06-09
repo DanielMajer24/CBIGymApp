@@ -81,7 +81,7 @@ if editing_session_id:
             for key in ["editing_session_id", "copying_session", "copied_session_fields"]:
                 if key in st.session_state:
                     del st.session_state[key]
-            st.experimental_rerun()
+            st.rerun()
     with action_col2:
         if st.button("Copy Session"):
             # Set a flag to start a new session using current values
@@ -119,7 +119,7 @@ if editing_session_id:
                     })
             st.session_state["copied_session_fields"]["selected_exercises"] = selected_exercises.copy()
             st.session_state["editing_session_id"] = None  # Disable edit mode!
-            st.experimental_rerun()
+            st.rerun()
 
     # --- Load attendees (by user_id, map to name) ---
     att_resp = supabase.table("scheduled_workout_attendees") \
