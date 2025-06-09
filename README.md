@@ -102,5 +102,58 @@ SUPABASE_URL="your_supabase_project_url"
 SUPABASE_KEY="your_supabase_anon_or_service_key"
 ```
 
+## Database Schema
+
+This project uses Supabase (Postgres) for data storage.
+
+**Main tables:**
+
+- `users`: All users (athletes, coaches, etc.)
+- `exercises`: List of exercise templates
+- `workouts`: Logged athlete workouts
+- `workout_sets`: Details of each set performed
+- `scheduled_workouts`: Planned sessions by coaches
+- `scheduled_workout_exercises`: Exercises assigned to scheduled workouts
+- `scheduled_workout_attendees`: User attendance/RSVP for sessions
+
+See `supabase_schema.sql` for full SQL.
+
+**Example ER diagram:**  
+(Coach → schedules → session → assigns exercises & athletes → athletes log workouts/sets)
+
+
+## Static Site Redirect
+
+A [GitHub Pages](https://github.com/DanielMajer24/cbi_gym_static_app) repo serves as a landing page and redirect to your Streamlit app (useful for custom domains and clean navigation).
+
+### Redirect HTML Example
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Redirecting...</title>
+  <script>
+    // Redirect to deployed Streamlit app
+    const STREAMLIT_URL = "https://cairns-basketball-gym-app.streamlit.app/Coach_Authentication";
+    if (window.location.hash.length > 1) {
+      window.location.href = STREAMLIT_URL + "?" + window.location.hash.substring(1);
+    } else {
+      window.location.href = STREAMLIT_URL;
+    }
+  </script>
+</head>
+<body>
+  Redirecting you to the authentication page...
+</body>
+</html>
+```
+
+### How to use
+
+- Place this file as `index.html` in your static repo.
+- Configure your GitHub Pages settings for the repo.
+- Point your custom domain to this GitHub Pages site.
 
 
