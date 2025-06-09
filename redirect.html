@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Redirecting...</title>
+  <script>
+    // Grab everything after the hash and redirect to the Streamlit app on port 8501
+    if (window.location.hash.length > 1) {
+      // Hardcode the destination host and port for your Streamlit app:
+      window.location.href = "http://localhost:8501/Coach_Authentication?" + window.location.hash.substring(1);
+    }
+  </script>
+</head>
+<body>
+  Redirecting you to the auth page...
+</body>
+</html>
