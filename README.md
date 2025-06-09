@@ -90,11 +90,13 @@ README.md                      # This documentation
 
 You’ll need to set the following environment variables (recommended via a `.env` file) or secrets file in streamlit (secrets.toml):
 
-```env
+.env
+```
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_KEY=your_supabase_anon_or_service_key
 ```
 
+secrets.toml
 ```secrets.toml
 SUPABASE_URL="your_supabase_project_url"
 SUPABASE_KEY="your_supabase_anon_or_service_key"
