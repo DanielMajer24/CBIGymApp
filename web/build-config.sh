@@ -8,5 +8,7 @@ if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
   exit 1
 fi
 
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
 printf 'window.CBI_CONFIG = { supabaseUrl: "%s", supabaseAnonKey: "%s" };\n' \
-  "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > app-config.js
+  "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > "$script_dir/app-config.js"
