@@ -178,6 +178,12 @@ function formattedSet(set, kind) {
   else result = set.value ?? "—";
   return result + (set.rpe != null ? " @" + set.rpe : "");
 }
+function supersetMark(group) {
+  const label = String(group || "").trim().slice(0, 1).toUpperCase();
+  if (!label) return "";
+  const tones = { A:"tone-a", B:"tone-b", C:"tone-c", D:"tone-d", E:"tone-e", F:"tone-f" };
+  return '<span class="superset-mark ' + (tones[label] || "tone-a") + '" title="Superset ' + esc(label) + '" aria-label="Superset ' + esc(label) + '">' + esc(label) + "</span>";
+}
 function setInput(exercise, setNumber, logId, disabled) {
   const saved = exercise.setLogs.find((entry) => entry.set_number === setNumber) || {};
   const draft = draftStore(logId)[exercise.id + ":" + setNumber] || {};
@@ -193,7 +199,7 @@ function exerciseCard(exercise, previous, logId, done) {
   const prior = previous.length ? previous.map((entry) => '<div class="previous-line"><span>Set ' + entry.set_number + "</span><span>" + formattedSet(entry, exercise.tracking_type) + "</span></div>").join("") : "<p>No previous completed result.</p>";
   const rows = Array.from({length:exercise.sets}, (_, index) => setInput(exercise, index + 1, logId, done)).join("");
   return '<article class="card exercise-card"><div class="exercise-top"><div><div class="eyebrow">Exercise ' + exercise.position + '</div><h2 class="exercise-title">' + esc(exercise.exercise_name) + "</h2></div>" +
-    (exercise.superset_group ? '<span class="pill blue">Superset ' + esc(exercise.superset_group) + "</span>" : "") +
+    supersetMark(exercise.superset_group) +
     '<button class="button small ghost" data-action="copy-previous" data-exercise="' + esc(exercise.id) + '"' + (done ? " disabled" : "") + ">Same as previous</button></div>" +
     '<div class="prescription">' + plan(exercise) + "</div>" + (exercise.coach_notes ? '<p class="notice">' + esc(exercise.coach_notes) + "</p>" : "") +
     (exercise.instructions ? '<p class="subtle">' + esc(exercise.instructions) + "</p>" : "") +
@@ -294,9 +300,13 @@ async function coachReview(sessionId) {
   const data = await Promise.all([
     db.list("session_assignments", {select:"athlete_id,profiles!session_assignments_athlete_id_fkey(id,name)",session_id:"eq." + sessionId}, access),
     db.list("workout_logs", {select:"id,athlete_id,status,session_rpe,completed_at",session_id:"eq." + sessionId}, access),
+    db.list("session_exercises", {select:"*",session_id:"eq." + sessionId,order:"position.asc"}, access),
   ]);
-  const assignments = data[0], logs = data[1];
-  shell('<section class="page-head"><div class="eyebrow">' + dateLabel(session.session_date) + '</div><h1>' + esc(session.name) + '</h1><p class="subtle">Athlete results are read-only in coach review.</p></section><section class="card"><h2>Completion</h2>' +
+  const assignments = data[0], logs = data[1], exercises = data[2];
+  const programmedExercises = exercises.length
+    ? exercises.map((exercise) => '<div class="review-exercise"><div class="split"><div><div class="eyebrow">Exercise ' + exercise.position + '</div><h3>' + esc(exercise.exercise_name) + '</h3></div>' + supersetMark(exercise.superset_group) + '</div><div class="prescription">' + plan(exercise) + '</div>' + (exercise.coach_notes ? '<p class="subtle">' + esc(exercise.coach_notes) + '</p>' : "") + '</div>').join("")
+    : '<p class="subtle">No exercises have been programmed for this session.</p>';
+  shell('<section class="page-head"><div class="eyebrow">' + dateLabel(session.session_date) + '</div><h1>' + esc(session.name) + '</h1><p class="subtle">Athlete results are read-only in coach review.</p></section><section class="card"><h2>Programmed exercises</h2>' + programmedExercises + '</section><section class="card"><h2>Completion</h2>' +
     assignments.map((assignment) => {
       const profile = Array.isArray(assignment.profiles) ? assignment.profiles[0] : assignment.profiles;
       const log = logs.find((entry) => entry.athlete_id === assignment.athlete_id);
@@ -307,7 +317,7 @@ async function coachReview(sessionId) {
 async function coachLogDetail(logId) {
   const workout = await getWorkoutDetail(logId, coachToken());
   shell('<section class="page-head"><div class="eyebrow">Athlete result · ' + shortDate(workout.log.session_date) + '</div><h1>' + esc(workout.log.session_name) + '</h1><p class="subtle">' + statusPill(workout.log.status) + (workout.log.session_rpe != null ? " Session RPE " + workout.log.session_rpe : "") + "</p></section>" +
-    workout.exercises.map((exercise) => '<article class="card session-log"><div class="split"><h2>' + esc(exercise.exercise_name) + '</h2>' + (exercise.superset_group ? '<span class="pill blue">Superset ' + esc(exercise.superset_group) + "</span>" : "") + '</div><div class="prescription">' + plan(exercise) + "</div>" +
+    workout.exercises.map((exercise) => '<article class="card session-log"><div class="split"><h2>' + esc(exercise.exercise_name) + '</h2>' + supersetMark(exercise.superset_group) + '</div><div class="prescription">' + plan(exercise) + "</div>" +
       Array.from({length:exercise.sets}, (_, index) => { const set = exercise.setLogs.find((row) => row.set_number === index + 1); return '<div class="previous-line"><span>Set ' + (index + 1) + "</span><strong>" + (set ? formattedSet(set, exercise.tracking_type) : "—") + "</strong></div>"; }).join("") + "</article>").join("") +
     (workout.log.athlete_notes ? '<article class="card"><h3>Athlete notes</h3><p>' + esc(workout.log.athlete_notes) + "</p></article>" : ""), true);
 }
