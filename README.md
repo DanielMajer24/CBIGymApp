@@ -1,163 +1,203 @@
-# CBI Gym App
+# CBI Performance
 
-A web application for managing athlete workouts, schedules, and gym activities—built with [Streamlit](https://streamlit.io/) and [Supabase](https://supabase.com/).  
-Designed for Cairns Basketball coaches, players, and staff.
+A lightweight, mobile-first Strength & Conditioning PWA for a small squad.
 
----
+The main workflow is deliberately short:
 
-## Table of Contents
+1. A coach programs a session once.
+2. An athlete chooses their public profile on a shared/trusted device.
+3. The athlete records sets with automatic saving.
+4. The coach reviews completion and immutable historical results.
 
-- [Features](#features)
-- [File Structure](#file-structure)
-- [Getting Started](#getting-started)
-- [Environment Variables](#environment-variables)
-- [Database Schema](#database-schema)
-- [Static Site Redirect](#static-site-redirect)
-- [Deployment](#deployment)
-- [Usage](#usage)
-- [Extending & Contributing](#extending--contributing)
-- [License](#license)
+## Current implementation
 
----
+The production application is the dependency-free static PWA in web/. It uses
+Supabase Postgres, Row Level Security, and Supabase Auth for coach access.
+There is no permanently running Python server to host or maintain.
+
+The original Streamlit prototype remains at the repository root and in pages/.
+It is retained as legacy reference while the replacement is verified, but it is
+not the application to deploy.
+
+### Why the rebuild
+
+The existing Streamlit/Supabase prototype provided useful proof-of-concept
+ideas, but was not suitable for the desired product:
+
+- each athlete required an account and password;
+- its single-form manual save flow was poor between sets;
+- it had no templates, teams, exercise tracking types, autosave, PWA, history,
+  or immutable workout snapshots;
+- its SQL and Python code disagreed on profile fields;
+- no tests, migration path, or reliable deployment configuration existed.
+
+A static PWA plus managed Postgres is simpler for a small organisation:
+Cloudflare Pages hosts the app, Supabase provides persistence and coach
+authentication, and the browser directly calls a constrained public API.
 
 ## Features
 
-- Athlete & coach authentication (Supabase)
-- Coaches can create, assign, and manage workout sessions
-- Athletes view, log, and track their workouts
-- Role-based access: coach vs athlete workflows
-- Calendar and scheduling for workouts
-- Supabase database integration for persistence
-- Secure deployment and private access options
-- Static landing page/redirect via GitHub Pages (for custom domains)
+### Athlete mode
 
----
+- Active-athlete picker, remembered with browser local storage.
+- Today, History, and Profile navigation designed for phone screens.
+- Start or resume prevents duplicate athlete/session logs.
+- Fast numeric set cards with inputs appropriate to weight/reps, reps, time,
+  distance, height, power, conditioning, and custom results.
+- Sensible prescription defaults, Same as previous, blur saves, 600 ms
+  debounce, visible saving state, and local draft protection.
+- Previous result and exercise-history views.
+- Optional session RPE and notes on completion.
 
-## File Structure
+### Coach mode
 
-| File Name                    | Description                                  |
-|------------------------------|----------------------------------------------|
-| CBI_Gym_App.py               | Main Streamlit app entry point               |
-| 1_Login.py                   | Login & signup page                          |
-| 2_Athlete_Workouts.py        | Athlete's workout dashboard                  |
-| 3_Coach_Workout_Plans.py     | Coach's workout/session creation             |
-| 4_Coach_Authentication.py    | Coach-only authentication page               |
-| supabase_schema.sql          | (Recommended: Add this file)                 |
-| static_redirect/index.html   | Static GitHub Pages redirect (see below)     |
-| README.md                    | This documentation                           |
+- Supabase Auth login checked against a server-side coach profile.
+- Dashboard, sessions, templates, athletes, teams, and exercise library.
+- Session builder supports date, duration, team, individual, or everyone
+  assignments, accessible up/down exercise ordering, and optional A–F superset
+  groups.
+- Templates can seed a new scheduled session.
+- Workout review is read-only and shows progress plus individual results.
 
+## Data model and snapshots
 
+See supabase/schema.sql for the complete schema and policies, and
+supabase/README.md for the security model.
 
----
+The key boundary is:
 
-## Getting Started
+    editable programme: programmed_sessions -> session_exercises
+    historical record:  workout_logs -> workout_exercises -> set_logs
 
-### Prerequisites
+When an athlete starts a session, start_or_resume_workout atomically creates or
+retrieves their single workout log and copies the full prescription into
+workout_exercises. Later coach edits cannot alter completed history.
 
-- Python 3.11+
-- [pip](https://pip.pypa.io/en/stable/) or [conda](https://docs.conda.io/)
-- Streamlit
-- Supabase Python client (`supabase-py` or `supbase` through anaconda)
-- Git (for cloning repo and Pages deployment)
+## Local setup
 
-### Installation
+Requirements:
 
-1. **Clone the repository**
-    ```bash
-    git clone https://github.com/DanielMajer24/cbi_gym_app.git
-    cd cbi_gym_app
-    ```
+- Python 3 for a simple static local server.
+- A Supabase project.
+- Node 20+ only if you want to run the included static tests. The app itself
+  has no npm dependencies or frontend build step.
 
-2. **Install Python dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *(If `requirements.txt` is not present, install at least:)*  
-    ```bash
-    pip install streamlit supabase
-    ```
+1. Create a new Supabase project. Do not run the new schema alongside the old
+   Streamlit schema in the same populated project.
+2. In Supabase SQL Editor, run supabase/schema.sql, then supabase/seed.sql.
+3. Create a Supabase Auth user for the coach and link it to a coach profile as
+   described in supabase/README.md.
+4. Copy the public configuration template:
 
-3. **Set up environment variables** (see below).
+       cp web/app-config.example.js web/app-config.js
 
-4. **Initialize the Supabase database**  
-   - Create a new project at [supabase.com](https://supabase.com/).
-   - Run the SQL statements from `supabase_schema.sql` in the SQL editor.
+   Replace the two placeholders with the project URL and anon key. The anon key
+   is public by design; never use a service-role key.
+5. Serve the web directory:
 
-5. **Run the app locally**
-    ```bash
-    streamlit run CBI_Gym_App.py
-    ```
+       python3 -m http.server 8080 --directory web
 
----
+6. Open http://localhost:8080 and choose Daniel Majer. Use the coach URL at
+   http://localhost:8080/#coach/login.
 
-## Environment Variables
+Set the Supabase Auth Site URL and additional redirect URL to the development
+and production application addresses in Authentication → URL Configuration.
 
-You’ll need to set the following environment variables (recommended via a `.env` file) or secrets file in streamlit (secrets.toml):
+## Development checks
 
-.env
-```
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_KEY=your_supabase_anon_or_service_key
-```
+Run the static checks with:
 
-secrets.toml
-```secrets.toml
-SUPABASE_URL="your_supabase_project_url"
-SUPABASE_KEY="your_supabase_anon_or_service_key"
-```
+    node --test tests
+    node --check web/app.js
+    node --check web/api.js
+    node --check web/sw.js
 
-## Database Schema
+The repository also retains the legacy Python syntax check:
 
-This project uses Supabase (Postgres) for data storage.
+    python3 -m py_compile CBI_Gym_App.py pages/*.py
 
-**Main tables:**
+## Deployment: Cloudflare Pages + Supabase
 
-- `users`: All users (athletes, coaches, etc.)
-- `exercises`: List of exercise templates
-- `workouts`: Logged athlete workouts
-- `workout_sets`: Details of each set performed
-- `scheduled_workouts`: Planned sessions by coaches
-- `scheduled_workout_exercises`: Exercises assigned to scheduled workouts
-- `scheduled_workout_attendees`: User attendance/RSVP for sessions
+Cloudflare Pages is the recommended host because this app is static and does
+not need a server process.
 
-See `supabase_schema.sql` for full SQL.
+1. Push this repository to GitHub.
+2. In Cloudflare, create a Pages project from the repository.
+3. Set Root directory to web.
+4. Set Build command to:
 
-**Example ER diagram:**  
-(Coach → schedules → session → assigns exercises & athletes → athletes log workouts/sets)
+       sh build-config.sh
 
+5. Set Build output directory to a single period: .
+6. Add SUPABASE_URL and SUPABASE_ANON_KEY as Cloudflare build variables. They
+   generate app-config.js during the build and are safe to expose in the
+   delivered frontend. Do not set SUPABASE_SERVICE_ROLE_KEY.
+7. Set the Supabase Auth Site URL and redirect URLs to the Cloudflare Pages
+   production address (and custom domain, if used).
+8. Deploy, open the site on a phone, and use Add to Home Screen.
 
-## Static Site Redirect
+Cloudflare currently offers unlimited static asset requests on Pages and 500
+free builds monthly, which is ample here. Supabase Free currently includes a
+500 MB database, 50,000 MAUs, and 5 GB egress. Its important operational
+limitation is that a free project pauses after seven days with no activity; a
+coach should open the app weekly, or use a paid tier if that is unacceptable.
+Review provider terms and limits before relying on them long-term:
 
-A [GitHub Pages](https://github.com/DanielMajer24/cbi_gym_static_app) repo serves as a landing page and redirect to your Streamlit app (useful for custom domains and clean navigation).
+- https://developers.cloudflare.com/pages/platform/limits/
+- https://developers.cloudflare.com/pages/functions/pricing/
+- https://supabase.com/pricing
+- https://supabase.com/docs/guides/platform/free-project-pausing
 
-### Redirect HTML Example
+## Security notes
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Redirecting...</title>
-  <script>
-    // Redirect to deployed Streamlit app
-    const STREAMLIT_URL = "https://cairns-basketball-gym-app.streamlit.app/Coach_Authentication";
-    if (window.location.hash.length > 1) {
-      window.location.href = STREAMLIT_URL + "?" + window.location.hash.substring(1);
-    } else {
-      window.location.href = STREAMLIT_URL;
-    }
-  </script>
-</head>
-<body>
-  Redirecting you to the authentication page...
-</body>
-</html>
-```
+Coach administration is protected by Supabase Auth plus RLS. No coach password
+or PIN is embedded in frontend code.
 
-### How to use
+Athletes intentionally have no private accounts. RLS allows anonymous users to
+read active roster/programme data and write only workout set data for an
+in-progress assigned session. Because there is no athlete identity, a member
+of the trusted squad could technically submit a set for a different public
+profile; this is the unavoidable trade-off for passwordless athlete mode. They
+cannot change athletes, teams, exercises, templates, or programming.
 
-- Place this file as `index.html` in your static repo.
-- Configure your GitHub Pages settings for the repo.
-- Point your custom domain to this GitHub Pages site.
+The old local Streamlit secrets file contained a real Supabase key during the
+audit. It is ignored by this repository, but rotate that project key in
+Supabase before production deployment.
 
+## Seed data
 
+supabase/seed.sql provides:
+
+- Daniel Majer and three additional athletes;
+- Development Squad and Rehab Group;
+- the requested exercise library;
+- a reusable Lower Strength A template;
+- a completed Lower Strength A session in the past;
+- today’s Lower Body — Power session;
+- a future Upper Strength session.
+
+## Manual acceptance checklist
+
+Coach:
+
+1. Create an athlete and team, assign the athlete to the team.
+2. Create an exercise.
+3. Build a session, assign a team and/or individual athlete, and save. Put
+   paired exercises in the same Superset group to prescribe them together.
+4. Save a template and create a session from it.
+
+Athlete:
+
+1. Change athlete and select an assigned profile.
+2. Start the session, enter set values, wait for Saved, then refresh.
+3. Confirm the same workout resumes with the entered values.
+4. Complete it with optional RPE and notes, then review History and exercise
+   history.
+
+Coach review:
+
+1. Open the programmed session.
+2. Confirm each athlete’s not-started, in-progress, or complete state.
+3. Open a completed log and compare the recorded sets.
+4. Edit the future programme; confirm the completed log still displays its
+   original prescription.

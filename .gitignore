@@ -1,0 +1,13 @@
+# Local credentials and generated configuration
+.env
+.env.local
+.streamlit/
+web/app-config.js
+
+# Tooling output
+node_modules/
+dist/
+coverage/
+__pycache__/
+.pytest_cache/
+.DS_Store
