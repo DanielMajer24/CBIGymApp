@@ -16,7 +16,7 @@ create or replace function public.verify_athlete_entry_pin(p_pin text) returns b
 language plpgsql security definer set search_path = public, extensions as $$
 declare stored_hash text;
 begin
-  if p_pin !~ '^[0-9]{4}$' then return false; end if;
+  if p_pin is null or p_pin !~ '^[0-9]{4}$' then return false; end if;
   select setting_value into stored_hash
   from public.app_settings where setting_key = 'athlete_entry_pin_hash';
   return stored_hash is not null and crypt(p_pin, stored_hash) = stored_hash;
@@ -27,7 +27,7 @@ create or replace function public.set_athlete_entry_pin(p_pin text) returns void
 language plpgsql security definer set search_path = public, extensions as $$
 begin
   if not public.is_coach() then raise exception 'Coach access required' using errcode = '42501'; end if;
-  if p_pin !~ '^[0-9]{4}$' then raise exception 'Entry code must be exactly four digits'; end if;
+  if p_pin is null or p_pin !~ '^[0-9]{4}$' then raise exception 'Entry code must be exactly four digits'; end if;
   insert into public.app_settings (setting_key, setting_value)
   values ('athlete_entry_pin_hash', crypt(p_pin, gen_salt('bf', 10)))
   on conflict (setting_key) do update set setting_value = excluded.setting_value, updated_at = now();
