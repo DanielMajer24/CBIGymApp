@@ -445,7 +445,7 @@ function coachAccessCode() {
 async function coachSessions() {
   const sessions = await db.list("programmed_sessions", {select:"*",order:"session_date.desc",limit:"100"}, coachToken());
   shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Programming</div><h1>Sessions</h1></div><a class="button primary" href="#coach/session/new">+ Create</a></div><p class="subtle">Create once, assign, and review completion without modifying athlete logs.</p></section>' +
-    (sessions.map((session) => '<article class="card"><div class="split"><div><div class="eyebrow">' + shortDate(session.session_date) + '</div><h2>' + esc(session.name) + '</h2><p class="subtle">' + esc(session.description || "No description") + '</p></div><div class="stack"><button class="button small" data-action="review-session" data-session="' + esc(session.id) + '">Review</button><button class="button small ghost" data-action="edit-session" data-session="' + esc(session.id) + '">Edit</button><button class="button small danger" data-action="remove-session" data-session="' + esc(session.id) + '" data-name="' + esc(session.name) + '">Remove</button></div></div></article>').join("") || empty("No sessions yet. Create your first session.")), true);
+    (sessions.map((session) => '<article class="card"><div class="split"><div><div class="eyebrow">' + shortDate(session.session_date) + '</div><h2>' + esc(session.name) + '</h2><p class="subtle">' + esc(session.description || "No description") + '</p></div><div class="stack"><button class="button small" data-action="review-session" data-session="' + esc(session.id) + '">Review</button><button class="button small ghost" data-action="edit-session" data-session="' + esc(session.id) + '">Edit</button><button class="button small danger" data-action="delete-session" data-session="' + esc(session.id) + '" data-name="' + esc(session.name) + '">Delete</button></div></div></article>').join("") || empty("No sessions yet. Create your first session.")), true);
 }
 async function coachReview(sessionId) {
   const access = coachToken();
@@ -552,11 +552,11 @@ async function athleteEditor(id) {
     id ? db.list("athlete_teams", {select:"team_id",athlete_id:"eq." + id}, access) : Promise.resolve([]),
   ]);
   const athlete = values[0], teams = values[1], assigned = values[2].map((entry) => entry.team_id);
-  shell('<section class="page-head"><div class="eyebrow">' + (id ? "Edit athlete" : "New athlete") + '</div><h1>' + (id ? esc(athlete.name) : "Add athlete") + '</h1></section><form data-form="athlete" data-athlete="' + esc(id || "") + '" class="stack"><section class="card"><label>Name<input name="name" required value="' + esc(athlete.name) + '"></label><label class="inline"><input type="checkbox" name="active"' + (athlete.active ? " checked" : "") + '> Active in athlete selector</label><label>Teams<select multiple name="teams" size="5">' + teams.map((team) => '<option value="' + esc(team.id) + '"' + (assigned.includes(team.id) ? " selected" : "") + ">" + esc(team.name) + "</option>").join("") + '</select></label></section><button class="button primary full">Save athlete</button>' + (id && athlete.active ? '<button type="button" class="button danger full" data-action="remove-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(athlete.name) + '">Remove athlete</button>' : "") + '</form>' + (id ? '<p class="right"><button class="button ghost" data-action="coach-athlete-history" data-athlete="' + esc(id) + '">View workout history</button></p>' : ""), true);
+  shell('<section class="page-head"><div class="eyebrow">' + (id ? "Edit athlete" : "New athlete") + '</div><h1>' + (id ? esc(athlete.name) : "Add athlete") + '</h1></section><form data-form="athlete" data-athlete="' + esc(id || "") + '" class="stack"><section class="card"><label>Name<input name="name" required value="' + esc(athlete.name) + '"></label><label class="inline"><input type="checkbox" name="active"' + (athlete.active ? " checked" : "") + '> Active in athlete selector</label><label>Teams<select multiple name="teams" size="5">' + teams.map((team) => '<option value="' + esc(team.id) + '"' + (assigned.includes(team.id) ? " selected" : "") + ">" + esc(team.name) + "</option>").join("") + '</select></label></section><button class="button primary full">Save athlete</button>' + (id && athlete.active ? '<button type="button" class="button full ghost" data-action="archive-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(athlete.name) + '">Archive athlete</button><button type="button" class="button danger full" data-action="delete-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(athlete.name) + '">Delete permanently</button>' : "") + '</form>' + (id ? '<p class="right"><button class="button ghost" data-action="coach-athlete-history" data-athlete="' + esc(id) + '">View workout history</button></p>' : ""), true);
 }
 async function teamEditor(id) {
   const team = await db.single("teams", {select:"id,name,active",id:"eq." + id}, coachToken());
-  shell('<section class="page-head"><div class="eyebrow">Team</div><h1>' + esc(team.name) + '</h1><p class="subtle">Removing a team hides it from new assignments while keeping all existing records.</p></section><form data-form="team" data-team="' + esc(team.id) + '" class="stack"><section class="card"><label>Name<input name="name" required value="' + esc(team.name) + '"></label><label class="inline"><input type="checkbox" name="active"' + (team.active ? " checked" : "") + '> Active for athlete selection and programming</label></section><button class="button primary full">Save team</button>' + (team.active ? '<button type="button" class="button danger full" data-action="remove-team" data-team="' + esc(team.id) + '" data-name="' + esc(team.name) + '">Remove team</button>' : "") + '</form>', true);
+  shell('<section class="page-head"><div class="eyebrow">Team</div><h1>' + esc(team.name) + '</h1><p class="subtle">Archive hides a team while preserving history. Permanent deletion is only available when it has no players or current/future assignments.</p></section><form data-form="team" data-team="' + esc(team.id) + '" class="stack"><section class="card"><label>Name<input name="name" required value="' + esc(team.name) + '"></label><label class="inline"><input type="checkbox" name="active"' + (team.active ? " checked" : "") + '> Active for athlete selection and programming</label></section><button class="button primary full">Save team</button>' + (team.active ? '<button type="button" class="button full ghost" data-action="archive-team" data-team="' + esc(team.id) + '" data-name="' + esc(team.name) + '">Archive team</button><button type="button" class="button danger full" data-action="delete-team" data-team="' + esc(team.id) + '" data-name="' + esc(team.name) + '">Delete permanently</button>' : "") + '</form>', true);
 }
 async function coachExercises() {
   const exercises = await db.list("exercises", {select:"*",order:"name.asc"}, coachToken());
@@ -585,18 +585,41 @@ function newExerciseModal() {
 function newTeamModal() {
   modal('<div class="split"><h2>Create team</h2><button class="button small ghost" data-action="close-modal">×</button></div><form data-form="quick-team" class="stack"><label>Team name<input name="name" required autofocus></label><button class="button primary full">Create team</button></form>');
 }
-async function removeSessionModal(sessionId, name) {
+async function deleteSessionModal(sessionId, name) {
   const logs = await db.list("workout_logs", {select:"id",session_id:"eq." + sessionId,limit:"1"}, coachToken());
   if (logs.length) {
-    return modal('<div class="split"><h2>Session cannot be removed</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle">At least one athlete has started this session. Their completed or in-progress workout is historical data and cannot be deleted.</p><button class="button full ghost" data-action="close-modal">Close</button>');
+    return modal('<div class="split"><h2>Session cannot be deleted</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle">At least one athlete has started this session. Their completed or in-progress workout is historical data and cannot be deleted.</p><button class="button full ghost" data-action="close-modal">Close</button>');
   }
-  modal('<div class="split"><h2>Remove session?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> and its assignments will be permanently removed. No athlete has started it. This cannot be undone.</p><form data-form="remove-session" data-session="' + esc(sessionId) + '" class="stack"><button class="button danger full">Remove session</button><button type="button" class="button full ghost" data-action="close-modal">Keep session</button></form>');
+  modal('<div class="split"><h2>Delete session permanently?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> and its assignments will be permanently deleted. No athlete has started it. This cannot be undone.</p><form data-form="delete-session" data-session="' + esc(sessionId) + '" class="stack"><button class="button danger full">Delete permanently</button><button type="button" class="button full ghost" data-action="close-modal">Keep session</button></form>');
 }
-function removeAthleteModal(athleteId, name) {
-  modal('<div class="split"><h2>Remove athlete?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> will no longer appear in athlete selection. Their workout history is retained and the athlete can be restored later.</p><form data-form="remove-athlete" data-athlete="' + esc(athleteId) + '" class="stack"><button class="button danger full">Remove athlete</button><button type="button" class="button full ghost" data-action="close-modal">Keep athlete</button></form>');
+function archiveAthleteModal(athleteId, name) {
+  modal('<div class="split"><h2>Archive athlete?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> will no longer appear in athlete selection. Their workout history is retained.</p><form data-form="archive-athlete" data-athlete="' + esc(athleteId) + '" class="stack"><button class="button danger full">Archive athlete</button><button type="button" class="button full ghost" data-action="close-modal">Keep athlete</button></form>');
 }
-function removeTeamModal(teamId, name) {
-  modal('<div class="split"><h2>Remove team?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> will no longer appear for athlete selection or new programming. Existing assignments and history stay intact, and the team can be restored later.</p><form data-form="remove-team" data-team="' + esc(teamId) + '" class="stack"><button class="button danger full">Remove team</button><button type="button" class="button full ghost" data-action="close-modal">Keep team</button></form>');
+async function deleteAthleteModal(athleteId, name) {
+  const logs = await db.list("workout_logs", {select:"id",athlete_id:"eq." + athleteId,limit:"1"}, coachToken());
+  if (logs.length) return modal('<div class="split"><h2>Athlete cannot be deleted</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> has workout history. Archive the athlete instead so their records remain accurate.</p><button class="button full ghost" data-action="close-modal">Close</button>');
+  modal('<div class="split"><h2>Delete athlete permanently?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong>, their team memberships, and unstarted session assignments will be permanently deleted. This cannot be undone.</p><form data-form="delete-athlete" data-athlete="' + esc(athleteId) + '" class="stack"><button class="button danger full">Delete permanently</button><button type="button" class="button full ghost" data-action="close-modal">Keep athlete</button></form>');
+}
+function archiveTeamModal(teamId, name) {
+  modal('<div class="split"><h2>Archive team?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> will no longer appear for athlete selection or new programming. Existing assignments and history stay intact.</p><form data-form="archive-team" data-team="' + esc(teamId) + '" class="stack"><button class="button danger full">Archive team</button><button type="button" class="button full ghost" data-action="close-modal">Keep team</button></form>');
+}
+async function teamHasFutureAssignment(teamId, access) {
+  const assignments = await db.list("session_assignments", {select:"id,programmed_sessions!session_assignments_session_id_fkey(session_date)",assigned_team_id:"eq." + teamId}, access);
+  return assignments.some((assignment) => {
+    const session = Array.isArray(assignment.programmed_sessions) ? assignment.programmed_sessions[0] : assignment.programmed_sessions;
+    return session?.session_date >= day();
+  });
+}
+async function deleteTeamModal(teamId, name) {
+  const [memberships, hasFutureAssignment] = await Promise.all([
+    db.list("athlete_teams", {select:"athlete_id",team_id:"eq." + teamId,limit:"1"}, coachToken()),
+    teamHasFutureAssignment(teamId, coachToken()),
+  ]);
+  if (memberships.length || hasFutureAssignment) {
+    const reason = memberships.length ? "it still has athlete memberships" : "it has a current or future session assignment";
+    return modal('<div class="split"><h2>Team cannot be deleted</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> cannot be permanently deleted because ' + reason + '. Remove those links first, or archive the team instead.</p><button class="button full ghost" data-action="close-modal">Close</button>');
+  }
+  modal('<div class="split"><h2>Delete team permanently?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> has no athlete memberships or current/future assignments. It will be permanently deleted. This cannot be undone.</p><form data-form="delete-team" data-team="' + esc(teamId) + '" class="stack"><button class="button danger full">Delete permanently</button><button type="button" class="button full ghost" data-action="close-modal">Keep team</button></form>');
 }
 function finishModal(logId) {
   modal('<div class="eyebrow">Almost done</div><h2>Finish session?</h2><p class="subtle">You can leave feedback blank. Completed workout sets are locked.</p><form data-form="finish" data-log="' + esc(logId) + '" class="stack"><label>Session RPE (optional)<input name="rpe" type="number" min="1" max="10" step=".5" inputmode="decimal"></label><label>Session notes (optional)<textarea name="notes"></textarea></label><button class="button primary full">Complete session</button><button type="button" class="button full ghost" data-action="close-modal">Keep training</button></form>');
@@ -791,22 +814,45 @@ async function saveTeam(form) {
   toast("Team saved");
   go("coach/athletes");
 }
-async function removeSession(form) {
+async function deleteSession(form) {
   await db.remove("programmed_sessions", {id:"eq." + form.dataset.session}, coachToken());
   closeModal();
-  toast("Session removed");
+  toast("Session deleted");
   go("coach/sessions");
 }
-async function removeAthlete(form) {
+async function archiveAthlete(form) {
   await db.update("profiles", {id:"eq." + form.dataset.athlete}, {active:false}, coachToken());
   closeModal();
-  toast("Athlete removed from selection");
+  toast("Athlete archived");
   go("coach/athletes");
 }
-async function removeTeam(form) {
+async function deleteAthlete(form) {
+  const athleteId = form.dataset.athlete, access = coachToken();
+  const logs = await db.list("workout_logs", {select:"id",athlete_id:"eq." + athleteId,limit:"1"}, access);
+  if (logs.length) throw new Error("This athlete now has workout history and cannot be permanently deleted. Archive them instead.");
+  await db.remove("athlete_teams", {athlete_id:"eq." + athleteId}, access);
+  await db.remove("session_assignments", {athlete_id:"eq." + athleteId}, access);
+  await db.remove("profiles", {id:"eq." + athleteId}, access);
+  closeModal();
+  toast("Athlete deleted");
+  go("coach/athletes");
+}
+async function archiveTeam(form) {
   await db.update("teams", {id:"eq." + form.dataset.team}, {active:false}, coachToken());
   closeModal();
-  toast("Team removed from selection");
+  toast("Team archived");
+  go("coach/athletes");
+}
+async function deleteTeam(form) {
+  const teamId = form.dataset.team, access = coachToken();
+  const [memberships, hasFutureAssignment] = await Promise.all([
+    db.list("athlete_teams", {select:"athlete_id",team_id:"eq." + teamId,limit:"1"}, access),
+    teamHasFutureAssignment(teamId, access),
+  ]);
+  if (memberships.length || hasFutureAssignment) throw new Error("This team now has athlete memberships or a current/future assignment. Archive it instead.");
+  await db.remove("teams", {id:"eq." + teamId}, access);
+  closeModal();
+  toast("Team deleted");
   go("coach/athletes");
 }
 function captureBuilder() {
@@ -873,13 +919,15 @@ async function eventAction(action, element) {
   if (action === "review-session") return go("coach/review/" + element.dataset.session);
   if (action === "review-log") return go("coach/log/" + element.dataset.log);
   if (action === "edit-session") return go("coach/session/" + element.dataset.session);
-  if (action === "remove-session") return removeSessionModal(element.dataset.session, element.dataset.name);
+  if (action === "delete-session") return deleteSessionModal(element.dataset.session, element.dataset.name);
   if (action === "edit-template") return go("coach/template/" + element.dataset.template);
   if (action === "edit-athlete") return go("coach/athlete/" + element.dataset.athlete);
-  if (action === "remove-athlete") return removeAthleteModal(element.dataset.athlete, element.dataset.name);
+  if (action === "archive-athlete") return archiveAthleteModal(element.dataset.athlete, element.dataset.name);
+  if (action === "delete-athlete") return deleteAthleteModal(element.dataset.athlete, element.dataset.name);
   if (action === "coach-athlete-history") return go("coach/athlete-history/" + element.dataset.athlete);
   if (action === "edit-team") return go("coach/team/" + element.dataset.team);
-  if (action === "remove-team") return removeTeamModal(element.dataset.team, element.dataset.name);
+  if (action === "archive-team") return archiveTeamModal(element.dataset.team, element.dataset.name);
+  if (action === "delete-team") return deleteTeamModal(element.dataset.team, element.dataset.name);
   if (action === "edit-exercise") return go("coach/exercise/" + element.dataset.exercise);
   if (action === "new-exercise") { captureBuilder(); return newExerciseModal(); }
   if (action === "new-team") { captureBuilder(); return newTeamModal(); }
@@ -971,9 +1019,11 @@ document.addEventListener("submit", (event) => {
     if (form.dataset.form === "exercise") return saveExercise(form);
     if (form.dataset.form === "quick-exercise") return quickExercise(form);
     if (form.dataset.form === "quick-team") return quickTeam(form);
-    if (form.dataset.form === "remove-session") return removeSession(form);
-    if (form.dataset.form === "remove-athlete") return removeAthlete(form);
-    if (form.dataset.form === "remove-team") return removeTeam(form);
+    if (form.dataset.form === "delete-session") return deleteSession(form);
+    if (form.dataset.form === "archive-athlete") return archiveAthlete(form);
+    if (form.dataset.form === "delete-athlete") return deleteAthlete(form);
+    if (form.dataset.form === "archive-team") return archiveTeam(form);
+    if (form.dataset.form === "delete-team") return deleteTeam(form);
   };
   task().catch(failure);
 });
