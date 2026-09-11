@@ -2,6 +2,10 @@
 -- workout history. The old seed athletes remain in the database as inactive
 -- records, so existing historical logs and coach review stay intact.
 
+-- The base schema already enables RLS here; repeat it so this migration is
+-- safe when run independently and Supabase's security check sees the intent.
+alter table public.athlete_teams enable row level security;
+
 update public.profiles
 set active = false
 where role = 'athlete'
