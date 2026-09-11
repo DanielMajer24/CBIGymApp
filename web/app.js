@@ -75,12 +75,12 @@ function coachNav() {
 }
 function shell(content, coach) {
   root.innerHTML = '<main class="shell"><header class="topbar">' +
-    '<a class="brand" href="#' + (coach ? "coach/dashboard" : "today") + '"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI Performance</span></a>' +
+    '<a class="brand" href="#' + (coach ? "coach/dashboard" : "today") + '"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI High Performance</span></a>' +
     (coach ? '<button class="button small ghost" data-action="coach-signout">Sign out</button>' :
       (state.athlete ? '<button class="button small ghost" data-action="change-athlete">' + esc(state.athlete.name) + '</button>' : '<a class="button small ghost" href="#coach/login">Coach login</a>')) +
     "</header>" + (coach ? coachNav() : "") + content + "</main>" + (coach ? "" : athleteNav());
 }
-function loading() { root.innerHTML = '<main class="shell"><header class="topbar"><span class="brand"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI Performance</span></span></header><div class="empty">Loading training…</div></main>'; }
+function loading() { root.innerHTML = '<main class="shell"><header class="topbar"><span class="brand"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI High Performance</span></span></header><div class="empty">Loading training…</div></main>'; }
 function empty(message) { return '<div class="card empty">' + esc(message) + "</div>"; }
 function statusPill(status) {
   const text = status === "completed" ? "Complete" : status === "in_progress" ? "In progress" : "Not started";

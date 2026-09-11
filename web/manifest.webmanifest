@@ -1,6 +1,6 @@
 {
-  "name": "CBI Performance",
-  "short_name": "CBI Performance",
+  "name": "CBI High Performance",
+  "short_name": "CBI High Performance",
   "description": "Strength and conditioning workout tracking",
   "start_url": "./index.html#today",
   "display": "standalone",

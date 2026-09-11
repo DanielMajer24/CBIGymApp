@@ -1,4 +1,4 @@
-const cacheName = "cbi-performance-v2";
+const cacheName = "cbi-high-performance-v3";
 const appFiles = ["./", "./index.html", "./styles.css", "./app.js", "./api.js", "./manifest.webmanifest", "./assets/icon.svg", "./assets/maskable-icon.svg", "./assets/cairns-basketball-logo.png"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(appFiles))));
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));

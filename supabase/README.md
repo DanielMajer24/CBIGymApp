@@ -4,7 +4,7 @@ Run schema.sql and then seed.sql in a new Supabase project. The legacy
 Streamlit tables are structurally incompatible with this application, so a
 separate project is the lowest-risk migration path.
 
-For an already deployed CBI Performance database, run each numbered file in
+For an already deployed CBI High Performance database, run each numbered file in
 migrations/ once, in order. Run 004_add_session_type.sql before its matching
 frontend so session colour types and workout snapshots exist, then run
 005_lock_athlete_access_to_authenticated.sql before releasing the new athlete
