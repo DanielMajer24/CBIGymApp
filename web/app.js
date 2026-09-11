@@ -769,11 +769,20 @@ async function quickExercise(form) {
   builder();
 }
 async function quickTeam(form) {
-  const values = new FormData(form);
-  const created = await db.insert("teams", {name:values.get("name"),active:true}, coachToken());
+  const values = new FormData(form), name = String(values.get("name") || "").trim(), access = coachToken();
+  if (!name) throw new Error("Enter a team name.");
+  const existing = await db.list("teams", {select:"id,name,active",name:"eq." + name,limit:"1"}, access);
+  let created;
+  if (existing[0]) {
+    if (existing[0].active) throw new Error("A team with that name already exists.");
+    created = await db.update("teams", {id:"eq." + existing[0].id}, {active:true}, access);
+    toast("Removed team restored");
+  } else {
+    created = await db.insert("teams", {name,active:true}, access);
+    toast("Team created");
+  }
   if (state.builder && route().path.indexOf("coach/session") === 0) state.builder.teams.push(created[0]);
   closeModal();
-  toast("Team created");
   return state.builder && route().path.indexOf("coach/session") === 0 ? builder() : render();
 }
 async function saveTeam(form) {
