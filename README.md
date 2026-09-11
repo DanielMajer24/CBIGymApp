@@ -41,7 +41,8 @@ authentication, and the browser directly calls a constrained public API.
 
 - One shared, coach-managed four-digit entry code before athlete selection;
   it is remembered per device and acts as a simple access deterrent.
-- Active-athlete picker, remembered with browser local storage.
+- Team-first athlete picker that shows only active athletes in the selected
+  squad, with the selected athlete remembered in browser local storage.
 - Today, History, and Profile navigation designed for phone screens.
 - Start or resume prevents duplicate athlete/session logs.
 - Fast numeric set cards with inputs appropriate to weight/reps, reps, time,

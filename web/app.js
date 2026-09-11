@@ -105,16 +105,38 @@ function athleteAccess(message) {
     (message ? '<div class="error-box">' + esc(message) + '</div>' : "") +
     '<form data-form="athlete-access" class="stack"><label>Team code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" minlength="4" maxlength="4" required aria-label="Four digit team code"></label><button class="button primary full">Continue</button></form></section>', false);
 }
-async function athletePicker() {
-  const athletes = await getActiveAthletes();
-  shell('<section class="login"><div class="eyebrow">Athlete mode</div><h1>Who are you?</h1>' +
-    '<p class="subtle">Choose your profile once. This device will remember it.</p><div class="stack">' +
-    athletes.map((athlete) => '<button class="list-button" data-action="select-athlete" data-id="' + esc(athlete.id) + '"><strong>' + esc(athlete.name) + "</strong><span>›</span></button>").join("") +
-    "</div>" + (!athletes.length ? empty("No active athletes yet. A coach can add one in Coach mode.") : "") +
+async function athletePickerData() {
+  const [teams, athletes, memberships] = await Promise.all([
+    db.list("teams", {select:"id,name",active:"eq.true",order:"name.asc"}),
+    getActiveAthletes(),
+    db.list("athlete_teams", {select:"athlete_id,team_id"}),
+  ]);
+  const activeIds = new Set(athletes.map((athlete) => athlete.id));
+  const teamIdsWithAthletes = new Set(memberships.filter((entry) => activeIds.has(entry.athlete_id)).map((entry) => entry.team_id));
+  return { teams:teams.filter((team) => teamIdsWithAthletes.has(team.id)), athletes, memberships };
+}
+async function athleteTeamPicker() {
+  const data = await athletePickerData();
+  shell('<section class="login"><div class="eyebrow">Athlete mode</div><h1>Choose your team</h1>' +
+    '<p class="subtle">Choose your squad, then select your athlete profile.</p><div class="stack">' +
+    data.teams.map((team) => '<button class="list-button" data-action="select-team" data-team="' + esc(team.id) + '"><strong>' + esc(team.name) + "</strong><span>›</span></button>").join("") +
+    "</div>" + (!data.teams.length ? empty("No teams have active athletes yet. A coach can add athletes in Coach mode.") : "") +
     '<p class="right"><a href="#coach/login">Coach login</a></p></section>', false);
 }
+async function athletePicker(teamId) {
+  const data = await athletePickerData();
+  const team = data.teams.find((item) => item.id === teamId);
+  if (!team) return athleteTeamPicker();
+  const athleteIds = new Set(data.memberships.filter((entry) => entry.team_id === team.id).map((entry) => entry.athlete_id));
+  const athletes = data.athletes.filter((athlete) => athleteIds.has(athlete.id));
+  shell('<section class="login"><div class="eyebrow">' + esc(team.name) + '</div><h1>Who are you?</h1>' +
+    '<p class="subtle">Choose your profile once. This device will remember it.</p><div class="stack">' +
+    athletes.map((athlete) => '<button class="list-button" data-action="select-athlete" data-id="' + esc(athlete.id) + '"><strong>' + esc(athlete.name) + "</strong><span>›</span></button>").join("") +
+    "</div>" + (!athletes.length ? empty("No active athletes are assigned to this team yet.") : "") +
+    '<button class="button full ghost" data-action="choose-another-team">Choose another team</button></section>', false);
+}
 async function athleteToday() {
-  if (!state.athlete) return athletePicker();
+  if (!state.athlete) return athleteTeamPicker();
   const [assignments, inProgress] = await Promise.all([
     getAssignedSessions(state.athlete.id, day()),
     getInProgressWorkouts(state.athlete.id),
@@ -236,13 +258,13 @@ async function athleteWorkout(logId) {
   else if (outstandingDrafts(logId).length) pushDrafts(logId).catch(() => {});
 }
 async function athleteHistory() {
-  if (!state.athlete) return athletePicker();
+  if (!state.athlete) return athleteTeamPicker();
   const sessions = await getWorkoutHistory(state.athlete.id);
   shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + '</div><h1>Training history</h1><p class="subtle">Completed sessions are preserved exactly as performed.</p></section>' +
     (sessions.map((log) => '<button class="list-button" data-action="open-workout" data-log="' + esc(log.id) + '"><span><strong>' + esc(log.session_name) + "</strong><br><span class=\"muted\">" + shortDate(log.session_date) + (log.session_rpe != null ? " · RPE " + log.session_rpe : "") + '</span></span><span class="pill lime">View</span></button>').join("") || empty("Finish a session and it will appear here.")), false);
 }
 async function athleteProfile() {
-  if (!state.athlete) return athletePicker();
+  if (!state.athlete) return athleteTeamPicker();
   const teams = state.athleteTeams.map((entry) => entry.teams?.name).filter(Boolean);
   shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(state.athlete.name) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section><article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
 }
@@ -644,7 +666,9 @@ async function eventAction(action, element) {
     state.athleteTeams = await getAthleteTeams(state.athlete.id);
     return go("today");
   }
-  if (action === "change-athlete") { localStorage.removeItem(athleteKey); state.athlete = null; return athletePicker(); }
+  if (action === "select-team") return athletePicker(element.dataset.team);
+  if (action === "choose-another-team") return athleteTeamPicker();
+  if (action === "change-athlete") { localStorage.removeItem(athleteKey); state.athlete = null; return athleteTeamPicker(); }
   if (action === "start-workout") return openWorkoutForSession(element.dataset.session);
   if (action === "open-workout") return go("workout/" + element.dataset.log);
   if (action === "copy-previous") return copyPrior(element.dataset.exercise);
