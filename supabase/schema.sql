@@ -60,6 +60,7 @@ create table public.session_templates (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   description text,
+  session_type text check (session_type is null or session_type in ('strength', 'power', 'conditioning', 'recovery', 'court', 'custom')),
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -94,6 +95,7 @@ create table public.programmed_sessions (
   session_date date not null,
   name text not null,
   description text,
+  session_type text check (session_type is null or session_type in ('strength', 'power', 'conditioning', 'recovery', 'court', 'custom')),
   estimated_duration_minutes integer check (estimated_duration_minutes > 0),
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
@@ -139,6 +141,7 @@ create table public.workout_logs (
   session_date date not null,
   session_name text not null,
   session_description text,
+  session_type text check (session_type is null or session_type in ('strength', 'power', 'conditioning', 'recovery', 'court', 'custom')),
   estimated_duration_minutes integer,
   status public.workout_status not null default 'in_progress',
   started_at timestamptz not null default now(),
@@ -264,10 +267,10 @@ begin
 
   insert into public.workout_logs (
     athlete_id, session_id, session_date, session_name, session_description,
-    estimated_duration_minutes, status
+    session_type, estimated_duration_minutes, status
   )
   select p_athlete_id, s.id, s.session_date, s.name, s.description,
-         s.estimated_duration_minutes, 'in_progress'
+         s.session_type, s.estimated_duration_minutes, 'in_progress'
   from public.programmed_sessions s where s.id = p_session_id
   on conflict (athlete_id, session_id) do update set updated_at = now()
   returning * into created_log;
@@ -342,12 +345,17 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update on public.profiles, public.teams, public.athlete_teams,
   public.exercises, public.session_templates, public.template_exercises,
   public.programmed_sessions, public.session_exercises, public.session_assignments,
-  public.workout_logs, public.workout_exercises, public.set_logs to anon, authenticated;
-grant execute on function public.start_or_resume_workout(uuid, uuid) to anon, authenticated;
-grant execute on function public.finish_workout(uuid, numeric, text) to anon, authenticated;
-grant execute on function public.last_exercise_sets(uuid, uuid, uuid) to anon, authenticated;
-grant execute on function public.exercise_history(uuid, uuid) to anon, authenticated;
+  public.workout_logs, public.workout_exercises, public.set_logs to authenticated;
+revoke all on function public.start_or_resume_workout(uuid, uuid) from public;
+revoke all on function public.finish_workout(uuid, numeric, text) from public;
+revoke all on function public.last_exercise_sets(uuid, uuid, uuid) from public;
+revoke all on function public.exercise_history(uuid, uuid) from public;
+grant execute on function public.start_or_resume_workout(uuid, uuid) to authenticated;
+grant execute on function public.finish_workout(uuid, numeric, text) to authenticated;
+grant execute on function public.last_exercise_sets(uuid, uuid, uuid) to authenticated;
+grant execute on function public.exercise_history(uuid, uuid) to authenticated;
 revoke all on function public.set_athlete_entry_pin(text) from public;
+revoke all on function public.verify_athlete_entry_pin(text) from public;
 grant execute on function public.verify_athlete_entry_pin(text) to anon, authenticated;
 grant execute on function public.set_athlete_entry_pin(text) to authenticated;
 
@@ -365,32 +373,33 @@ alter table public.workout_logs enable row level security;
 alter table public.workout_exercises enable row level security;
 alter table public.set_logs enable row level security;
 
--- Public athlete mode: reads public workout data and only writes set-log data.
-create policy "public reads active athletes" on public.profiles for select using (role = 'athlete' and active);
+-- Anonymous Auth users (created after the shared PIN) can read workout data
+-- and write only active set logs. The public anon key has no table access.
+create policy "athlete reads active athletes" on public.profiles for select to authenticated using (role = 'athlete' and active);
 create policy "coach manages profiles" on public.profiles for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads teams" on public.teams for select using (active);
+create policy "athlete reads teams" on public.teams for select to authenticated using (active);
 create policy "coach manages teams" on public.teams for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads memberships" on public.athlete_teams for select using (true);
+create policy "athlete reads memberships" on public.athlete_teams for select to authenticated using (true);
 create policy "coach manages memberships" on public.athlete_teams for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads active exercises" on public.exercises for select using (active);
+create policy "athlete reads active exercises" on public.exercises for select to authenticated using (active);
 create policy "coach manages exercises" on public.exercises for all to authenticated using (public.is_coach()) with check (public.is_coach());
 create policy "coach manages templates" on public.session_templates for all to authenticated using (public.is_coach()) with check (public.is_coach());
 create policy "coach manages template exercises" on public.template_exercises for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads assigned sessions" on public.programmed_sessions for select using (true);
+create policy "athlete reads assigned sessions" on public.programmed_sessions for select to authenticated using (true);
 create policy "coach manages sessions" on public.programmed_sessions for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads session exercises" on public.session_exercises for select using (true);
+create policy "athlete reads session exercises" on public.session_exercises for select to authenticated using (true);
 create policy "coach manages session exercises" on public.session_exercises for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads assignments" on public.session_assignments for select using (true);
+create policy "athlete reads assignments" on public.session_assignments for select to authenticated using (true);
 create policy "coach manages assignments" on public.session_assignments for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads workout logs" on public.workout_logs for select using (true);
+create policy "athlete reads workout logs" on public.workout_logs for select to authenticated using (true);
 create policy "coach reads workout logs" on public.workout_logs for all to authenticated using (public.is_coach()) with check (public.is_coach());
-create policy "public reads workout snapshots" on public.workout_exercises for select using (true);
-create policy "public reads set logs" on public.set_logs for select using (true);
-create policy "public writes active set logs" on public.set_logs for insert to anon, authenticated with check (
+create policy "athlete reads workout snapshots" on public.workout_exercises for select to authenticated using (true);
+create policy "athlete reads set logs" on public.set_logs for select to authenticated using (true);
+create policy "athlete writes active set logs" on public.set_logs for insert to authenticated with check (
   exists (select 1 from public.workout_exercises we join public.workout_logs wl on wl.id = we.workout_log_id
     where we.id = workout_exercise_id and wl.status = 'in_progress')
 );
-create policy "public updates active set logs" on public.set_logs for update to anon, authenticated using (
+create policy "athlete updates active set logs" on public.set_logs for update to authenticated using (
   exists (select 1 from public.workout_exercises we join public.workout_logs wl on wl.id = we.workout_log_id
     where we.id = workout_exercise_id and wl.status = 'in_progress')
 ) with check (

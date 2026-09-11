@@ -34,9 +34,9 @@ insert into public.exercises (id, name, category, tracking_type, default_instruc
   ('00000000-0000-4000-8000-000000000211', 'Assault Bike', 'Conditioning', 'conditioning', 'Record the most useful result: calories, watts, or time.')
 on conflict (id) do update set name = excluded.name, category = excluded.category, tracking_type = excluded.tracking_type;
 
-insert into public.session_templates (id, name, description) values
-  ('00000000-0000-4000-8000-000000000251', 'Lower Strength A', 'A reusable lower-body strength base session.')
-on conflict (id) do update set name = excluded.name, description = excluded.description;
+insert into public.session_templates (id, name, description, session_type) values
+  ('00000000-0000-4000-8000-000000000251', 'Lower Strength A', 'A reusable lower-body strength base session.', 'strength')
+on conflict (id) do update set name = excluded.name, description = excluded.description, session_type = excluded.session_type;
 
 insert into public.template_exercises (id, template_id, exercise_id, position, exercise_name, tracking_type, sets, prescribed_reps, target_rpe, rest_seconds) values
   ('00000000-0000-4000-8000-000000000261', '00000000-0000-4000-8000-000000000251', '00000000-0000-4000-8000-000000000201', 1, 'Back Squat', 'weight_reps', 4, 5, 7, 150),
@@ -48,11 +48,11 @@ on conflict (id) do update set sets = excluded.sets, prescribed_reps = excluded.
 update public.template_exercises set superset_group = 'A'
 where id in ('00000000-0000-4000-8000-000000000263', '00000000-0000-4000-8000-000000000264');
 
-insert into public.programmed_sessions (id, session_date, name, description, estimated_duration_minutes) values
-  ('00000000-0000-4000-8000-000000000301', current_date - 14, 'Lower Strength A', 'Build quality positions and leave a rep in reserve.', 55),
-  ('00000000-0000-4000-8000-000000000302', current_date, 'Lower Body — Power', 'Move with intent. Quality over fatigue.', 55),
-  ('00000000-0000-4000-8000-000000000303', current_date + 3, 'Upper Strength', 'Press, pull, and finish with trunk work.', 50)
-on conflict (id) do update set session_date = excluded.session_date, name = excluded.name, description = excluded.description;
+insert into public.programmed_sessions (id, session_date, name, description, session_type, estimated_duration_minutes) values
+  ('00000000-0000-4000-8000-000000000301', current_date - 14, 'Lower Strength A', 'Build quality positions and leave a rep in reserve.', 'strength', 55),
+  ('00000000-0000-4000-8000-000000000302', current_date, 'Lower Body — Power', 'Move with intent. Quality over fatigue.', 'power', 55),
+  ('00000000-0000-4000-8000-000000000303', current_date + 3, 'Upper Strength', 'Press, pull, and finish with trunk work.', 'strength', 50)
+on conflict (id) do update set session_date = excluded.session_date, name = excluded.name, description = excluded.description, session_type = excluded.session_type;
 
 insert into public.session_exercises (id, session_id, exercise_id, position, exercise_name, tracking_type, sets, prescribed_reps, prescribed_load_kg, target_rpe, rest_seconds, coach_notes) values
   ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000201', 1, 'Back Squat', 'weight_reps', 4, 5, 100, 7, 150, 'Smooth reps. Do not chase load.'),
@@ -77,8 +77,8 @@ and p.id in ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-00
 on conflict do nothing;
 
 -- One historical completed session, including an immutable prescription snapshot.
-insert into public.workout_logs (id, athlete_id, session_id, session_date, session_name, session_description, estimated_duration_minutes, status, started_at, completed_at, session_rpe, athlete_notes) values
-  ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000301', current_date - 14, 'Lower Strength A', 'Build quality positions and leave a rep in reserve.', 55, 'completed', now() - interval '14 days', now() - interval '14 days' + interval '52 minutes', 7, 'Felt strong.')
+insert into public.workout_logs (id, athlete_id, session_id, session_date, session_name, session_description, session_type, estimated_duration_minutes, status, started_at, completed_at, session_rpe, athlete_notes) values
+  ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000301', current_date - 14, 'Lower Strength A', 'Build quality positions and leave a rep in reserve.', 'strength', 55, 'completed', now() - interval '14 days', now() - interval '14 days' + interval '52 minutes', 7, 'Felt strong.')
 on conflict (athlete_id, session_id) do nothing;
 
 insert into public.workout_exercises (id, workout_log_id, source_session_exercise_id, exercise_id, position, exercise_name, tracking_type, sets, prescribed_reps, prescribed_load_kg, target_rpe, rest_seconds, coach_notes) values

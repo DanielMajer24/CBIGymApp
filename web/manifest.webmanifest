@@ -4,8 +4,8 @@
   "description": "Strength and conditioning workout tracking",
   "start_url": "./index.html#today",
   "display": "standalone",
-  "background_color": "#0b1015",
-  "theme_color": "#0b1015",
+  "background_color": "#100a1a",
+  "theme_color": "#100a1a",
   "icons": [
     { "src": "./assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "./assets/maskable-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
