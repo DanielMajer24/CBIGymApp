@@ -201,9 +201,9 @@ async function athleteToday() {
   }));
   const todayBlock = cards.join("") || (resumable.length ? "" : '<article class="card hero"><div class="eyebrow">Today</div><h1>Recovery day</h1><p class="subtle">There is no programmed session assigned to you today.</p></article>');
   shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + "</div><h1>" + dateLabel(day()) + "</h1></section>" +
-    scheduledTrainingsCard(month, calendar, "today") +
-    resumeSection +
     todayBlock +
+    resumeSection +
+    scheduledTrainingsCard(month, calendar, "today") +
     '<section class="card tight"><div class="split"><div><h3>Training history</h3><p class="subtle">Review your completed sessions.</p></div><a href="#history">History ›</a></div></section>', false);
 }
 function fields(exercise) {
