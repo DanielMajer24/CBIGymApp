@@ -536,10 +536,9 @@ async function coachAthletes() {
   const access = coachToken();
   const results = await Promise.all([
     getActiveAthletes(access),
-    db.list("profiles", {select:"id,name,active",role:"eq.athlete",order:"name.asc"}, access),
-    db.list("teams", {select:"id,name,active",order:"name.asc"}, access),
+    db.list("teams", {select:"id,name,active",active:"eq.true",order:"name.asc"}, access),
   ]);
-  const athletes = results[1], teams = results[2];
+  const athletes = results[0], teams = results[1];
   shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Squad</div><h1>Athletes</h1></div><div class="toolbar"><button class="button" data-action="new-team">+ Team</button><a class="button primary" href="#coach/athlete/new">+ Athlete</a></div></div><p class="subtle">' + results[0].length + " active athlete" + (results[0].length === 1 ? "" : "s") + " shown in the athlete selector.</p></section>" +
     athletes.map((athlete) => '<button class="list-button" data-action="edit-athlete" data-athlete="' + esc(athlete.id) + '"><span><strong>' + esc(athlete.name) + '</strong><br><span class="muted">' + (athlete.active ? "Active" : "Inactive") + '</span></span><span>›</span></button>').join("") +
     '<section class="card"><div class="split"><div><h2>Teams</h2><p class="subtle">Manage active and removed squads.</p></div><button class="button small ghost" data-action="new-team">+ Team</button></div>' +
@@ -549,7 +548,7 @@ async function athleteEditor(id) {
   const access = coachToken();
   const values = await Promise.all([
     id ? db.single("profiles", {select:"*",id:"eq." + id}, access) : Promise.resolve({name:"",active:true}),
-    db.list("teams", {select:"*",order:"name.asc"}, access),
+    db.list("teams", {select:"*",active:"eq.true",order:"name.asc"}, access),
     id ? db.list("athlete_teams", {select:"team_id",athlete_id:"eq." + id}, access) : Promise.resolve([]),
   ]);
   const athlete = values[0], teams = values[1], assigned = values[2].map((entry) => entry.team_id);
