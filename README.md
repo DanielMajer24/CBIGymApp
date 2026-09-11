@@ -39,6 +39,8 @@ authentication, and the browser directly calls a constrained public API.
 
 ### Athlete mode
 
+- One shared, coach-managed four-digit entry code before athlete selection;
+  it is remembered per device and acts as a simple access deterrent.
 - Active-athlete picker, remembered with browser local storage.
 - Today, History, and Profile navigation designed for phone screens.
 - Start or resume prevents duplicate athlete/session logs.
@@ -152,6 +154,10 @@ Review provider terms and limits before relying on them long-term:
 
 Coach administration is protected by Supabase Auth plus RLS. No coach password
 or PIN is embedded in frontend code.
+
+Athlete mode can use one shared four-digit entry code. It is verified and
+stored only by Supabase functions, never embedded in browser code. It is a
+casual access deterrent, not private athlete authentication.
 
 Athletes intentionally have no private accounts. RLS allows anonymous users to
 read active roster/programme data and write only workout set data for an

@@ -2,10 +2,12 @@ import {
   configured, auth, db, getActiveAthletes, getAthleteTeams, getAssignedSessions,
   getWorkout, getWorkoutDetail, startWorkout, saveSet, finishWorkout,
   getPreviousSets, getExerciseHistory, getWorkoutHistory, getInProgressWorkouts, getCoachProfile,
+  verifyAthleteEntryPin, setAthleteEntryPin,
 } from "./api.js";
 
 const root = document.querySelector("#app");
 const athleteKey = "cbi-athlete-id";
+const athleteAccessKey = "cbi-athlete-entry-authorized";
 const coachKey = "cbi-coach-session";
 const state = { athlete: null, athleteTeams: [], coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map(), retryTimer: null };
 const SAVE_DEBOUNCE_MS = 600;
@@ -31,6 +33,7 @@ function go(path) {
   else location.hash = "#" + path;
 }
 function coachToken() { return state.coachSession?.access_token; }
+function athleteAccessGranted() { return localStorage.getItem(athleteAccessKey) === "true"; }
 function numeric(value) { return value === "" || value === null || value === undefined ? null : Number(value); }
 function html(parts) { return parts.join(""); }
 function toast(message) {
@@ -63,7 +66,7 @@ function shell(content, coach) {
   root.innerHTML = '<main class="shell"><header class="topbar">' +
     '<a class="brand" href="#' + (coach ? "coach/dashboard" : "today") + '"><span class="brand-mark">C</span><span>CBI Performance</span></a>' +
     (coach ? '<button class="button small ghost" data-action="coach-signout">Sign out</button>' :
-      '<button class="button small ghost" data-action="change-athlete">' + esc(state.athlete?.name || "Coach") + "</button>") +
+      (state.athlete ? '<button class="button small ghost" data-action="change-athlete">' + esc(state.athlete.name) + '</button>' : '<a class="button small ghost" href="#coach/login">Coach login</a>')) +
     "</header>" + (coach ? coachNav() : "") + content + "</main>" + (coach ? "" : athleteNav());
 }
 function loading() { root.innerHTML = '<main class="shell"><header class="topbar"><span class="brand"><span class="brand-mark">C</span><span>CBI Performance</span></span></header><div class="empty">Loading training…</div></main>'; }
@@ -96,6 +99,11 @@ async function restoreAthlete() {
   state.athlete = athletes.find((athlete) => athlete.id === athleteId) || null;
   if (!state.athlete) { localStorage.removeItem(athleteKey); return; }
   state.athleteTeams = await getAthleteTeams(athleteId);
+}
+function athleteAccess(message) {
+  shell('<section class="login card"><div class="eyebrow">Athlete mode</div><h1>Enter team code</h1><p class="subtle">Ask your coach for the four-digit code, then choose your athlete profile.</p>' +
+    (message ? '<div class="error-box">' + esc(message) + '</div>' : "") +
+    '<form data-form="athlete-access" class="stack"><label>Team code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" minlength="4" maxlength="4" required aria-label="Four digit team code"></label><button class="button primary full">Continue</button></form></section>', false);
 }
 async function athletePicker() {
   const athletes = await getActiveAthletes();
@@ -287,7 +295,11 @@ async function coachDashboard() {
   shell('<section class="page-head"><div class="eyebrow">Coach dashboard</div><h1>Today</h1><p class="subtle">' + dateLabel(day()) + "</p></section>" +
     '<div class="grid three"><article class="card tight"><div class="metric">' + sessions.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + assigned + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
     '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a></div>' +
+    '<section class="card tight"><div class="split"><div><h2>Athlete entry code</h2><p class="subtle">Set or change the shared four-digit code for athlete mode.</p></div><a class="button small" href="#coach/access-code">Manage</a></div></section>' +
     '<section class="card"><h2>Today’s sessions</h2>' + (sessions.map((session) => '<button class="list-button" data-action="review-session" data-session="' + esc(session.id) + '"><span><strong>' + esc(session.name) + '</strong><br><span class="muted">' + (session.estimated_duration_minutes || "—") + " min · " + esc(session.description || "No description") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No sessions scheduled today.</p>') + "</section>", true);
+}
+function coachAccessCode() {
+  shell('<section class="page-head"><div class="eyebrow">Athlete mode</div><h1>Entry code</h1><p class="subtle">Use one shared four-digit code. It is not displayed or stored in the browser.</p></section><section class="card"><form data-form="athlete-access-code" class="stack"><label>New four-digit code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><label>Confirm code<input class="pin-input" name="confirm_pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><button class="button primary full">Save entry code</button></form></section>', true);
 }
 async function coachSessions() {
   const sessions = await db.list("programmed_sessions", {select:"*",order:"session_date.desc",limit:"100"}, coachToken());
@@ -706,6 +718,21 @@ document.addEventListener("submit", (event) => {
       if (!await checkCoach()) { localStorage.removeItem(coachKey); return coachLogin("This account is not linked to an active coach profile."); }
       return go("coach/dashboard");
     }
+    if (form.dataset.form === "athlete-access") {
+      const pin = String(new FormData(form).get("pin") || "");
+      const allowed = await verifyAthleteEntryPin(pin);
+      if (!allowed) return athleteAccess("That code is not correct. Try again or ask your coach.");
+      localStorage.setItem(athleteAccessKey, "true");
+      return go("today");
+    }
+    if (form.dataset.form === "athlete-access-code") {
+      const values = new FormData(form), pin = String(values.get("pin") || ""), confirm = String(values.get("confirm_pin") || "");
+      if (!/^[0-9]{4}$/.test(pin)) throw new Error("Enter exactly four digits.");
+      if (pin !== confirm) throw new Error("The two codes do not match.");
+      await setAthleteEntryPin(pin, coachToken());
+      toast("Athlete entry code saved");
+      return go("coach/dashboard");
+    }
     if (form.dataset.form === "finish") {
       if (!await flushSaves()) { toast("Some sets are not saved yet. Reconnect and try again."); return; }
       const values = new FormData(form);
@@ -735,6 +762,7 @@ async function render() {
       }
       if (!await checkCoach()) return coachLogin("Please sign in to access coach tools.");
       if (pieces[1] === "dashboard") return coachDashboard();
+      if (pieces[1] === "access-code") return coachAccessCode();
       if (pieces[1] === "sessions") return coachSessions();
       if (pieces[1] === "review") return coachReview(pieces[2]);
       if (pieces[1] === "log") return coachLogDetail(pieces[2]);
@@ -754,6 +782,7 @@ async function render() {
       if (pieces[1] === "exercise") return exerciseEditor(pieces[2] === "new" ? null : pieces[2]);
       return coachDashboard();
     }
+    if (!athleteAccessGranted()) return athleteAccess();
     await restoreAthlete();
     if (pieces[0] === "today") return athleteToday();
     if (pieces[0] === "workout") return athleteWorkout(pieces[1]);

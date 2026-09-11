@@ -5,8 +5,9 @@ Streamlit tables are structurally incompatible with this application, so a
 separate project is the lowest-risk migration path.
 
 For an already deployed CBI Performance database, run each numbered file in
-migrations/ once, in order. To enable supersets now, run
-migrations/001_add_supersets.sql before deploying the matching frontend.
+migrations/ once, in order. Run 001_add_supersets.sql before its matching
+frontend, then run 002_add_athlete_entry_code.sql before enabling the shared
+athlete entry-code screen.
 
 ## Coach account
 
@@ -19,6 +20,14 @@ migrations/001_add_supersets.sql before deploying the matching frontend.
 
 The application only grants coach screens to an authenticated user linked to
 an active coach profile. Never use a service-role key in the browser.
+
+## Shared athlete entry code
+
+After applying migration 002, sign into Coach mode and open Dashboard →
+Manage beside “Athlete entry code”. Choose one four-digit squad code. Athletes
+enter this once per device before choosing their public profile; the code is
+verified server-side and is not stored in the delivered JavaScript or browser
+storage. It is a casual access deterrent, not individual authentication.
 
 ## Security model
 

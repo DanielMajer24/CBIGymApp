@@ -182,3 +182,11 @@ export async function getCoachProfile(accessToken) {
   const profiles = await db.list("profiles", { select: "id,name,role,active", auth_user_id: `eq.${user.id}`, limit: "1" }, accessToken);
   return { user, profile: profiles[0] || null };
 }
+
+export function verifyAthleteEntryPin(pin) {
+  return db.rpc("verify_athlete_entry_pin", { p_pin: pin });
+}
+
+export function setAthleteEntryPin(pin, accessToken) {
+  return db.rpc("set_athlete_entry_pin", { p_pin: pin }, accessToken);
+}

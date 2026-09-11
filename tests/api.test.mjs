@@ -39,6 +39,34 @@ test("in-progress workouts query is scoped to the athlete and status", async () 
   assert.match(received, /status=eq\.in_progress/);
 });
 
+test("athlete entry code is verified through a server RPC", async () => {
+  let received;
+  global.fetch = async (url, options) => {
+    received = { url:String(url), options };
+    return new Response("true", {status:200,headers:{"Content-Type":"application/json"}});
+  };
+
+  const allowed = await api.verifyAthleteEntryPin("2468");
+
+  assert.equal(allowed, true);
+  assert.match(received.url, /rest\/v1\/rpc\/verify_athlete_entry_pin$/);
+  assert.deepEqual(JSON.parse(received.options.body), {p_pin:"2468"});
+});
+
+test("only a coach session can set the athlete entry code", async () => {
+  let received;
+  global.fetch = async (url, options) => {
+    received = { url:String(url), options };
+    return new Response("null", {status:200,headers:{"Content-Type":"application/json"}});
+  };
+
+  await api.setAthleteEntryPin("2468", "coach-access-token");
+
+  assert.match(received.url, /rest\/v1\/rpc\/set_athlete_entry_pin$/);
+  assert.equal(received.options.headers.Authorization, "Bearer coach-access-token");
+  assert.deepEqual(JSON.parse(received.options.body), {p_pin:"2468"});
+});
+
 test("today assignments normalize embedded relations and filter by date", async () => {
   global.fetch = async () => new Response(JSON.stringify([
     { id:"assignment-1", session_id:"session-1", programmed_sessions:[{id:"session-1",session_date:"2026-09-11",name:"Power"}] },

@@ -21,6 +21,14 @@ create table public.profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Secrets used by server-side helper functions. There are deliberately no
+-- direct grants or RLS policies for this table.
+create table public.app_settings (
+  setting_key text primary key,
+  setting_value text not null,
+  updated_at timestamptz not null default now()
+);
+
 create table public.teams (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
@@ -198,6 +206,7 @@ create or replace function public.set_updated_at() returns trigger
 language plpgsql as $$ begin new.updated_at = now(); return new; end; $$;
 
 create trigger profiles_updated_at before update on public.profiles for each row execute function public.set_updated_at();
+create trigger app_settings_updated_at before update on public.app_settings for each row execute function public.set_updated_at();
 create trigger teams_updated_at before update on public.teams for each row execute function public.set_updated_at();
 create trigger exercises_updated_at before update on public.exercises for each row execute function public.set_updated_at();
 create trigger templates_updated_at before update on public.session_templates for each row execute function public.set_updated_at();
@@ -212,6 +221,30 @@ language sql stable security definer set search_path = public as $$
     select 1 from public.profiles
     where auth_user_id = auth.uid() and role = 'coach' and active
   );
+$$;
+
+-- A shared athlete code is a simple access deterrent, not an athlete identity.
+-- The clear-text value never leaves these functions or appears in browser code.
+create or replace function public.verify_athlete_entry_pin(p_pin text) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+declare stored_hash text;
+begin
+  if p_pin !~ '^[0-9]{4}$' then return false; end if;
+  select setting_value into stored_hash
+  from public.app_settings where setting_key = 'athlete_entry_pin_hash';
+  return stored_hash is not null and crypt(p_pin, stored_hash) = stored_hash;
+end;
+$$;
+
+create or replace function public.set_athlete_entry_pin(p_pin text) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if not public.is_coach() then raise exception 'Coach access required' using errcode = '42501'; end if;
+  if p_pin !~ '^[0-9]{4}$' then raise exception 'Entry code must be exactly four digits'; end if;
+  insert into public.app_settings (setting_key, setting_value)
+  values ('athlete_entry_pin_hash', crypt(p_pin, gen_salt('bf', 10)))
+  on conflict (setting_key) do update set setting_value = excluded.setting_value, updated_at = now();
+end;
 $$;
 
 -- The only public write entry point for starting a workout. It atomically
@@ -314,8 +347,12 @@ grant execute on function public.start_or_resume_workout(uuid, uuid) to anon, au
 grant execute on function public.finish_workout(uuid, numeric, text) to anon, authenticated;
 grant execute on function public.last_exercise_sets(uuid, uuid, uuid) to anon, authenticated;
 grant execute on function public.exercise_history(uuid, uuid) to anon, authenticated;
+revoke all on function public.set_athlete_entry_pin(text) from public;
+grant execute on function public.verify_athlete_entry_pin(text) to anon, authenticated;
+grant execute on function public.set_athlete_entry_pin(text) to authenticated;
 
 alter table public.profiles enable row level security;
+alter table public.app_settings enable row level security;
 alter table public.teams enable row level security;
 alter table public.athlete_teams enable row level security;
 alter table public.exercises enable row level security;
