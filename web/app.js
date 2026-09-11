@@ -1,15 +1,16 @@
 import {
   configured, auth, db, getActiveAthletes, getAthleteTeams, getAssignedSessions,
-  getWorkout, getWorkoutDetail, startWorkout, saveSet, finishWorkout,
-  getPreviousSets, getExerciseHistory, getWorkoutHistory, getInProgressWorkouts, getCoachProfile,
+  getAssignedSessionsInRange, getAssignedSession, getSessionExercises, getWorkout, getWorkoutDetail,
+  startWorkout, saveSet, finishWorkout, getPreviousSets, getExerciseHistory, getWorkoutHistory,
+  getWorkoutLogsInRange, getInProgressWorkouts, getCoachProfile,
   verifyAthleteEntryPin, setAthleteEntryPin,
 } from "./api.js";
 
 const root = document.querySelector("#app");
 const athleteKey = "cbi-athlete-id";
-const athleteAccessKey = "cbi-athlete-entry-authorized";
+const athleteSessionKey = "cbi-athlete-auth-session";
 const coachKey = "cbi-coach-session";
-const state = { athlete: null, athleteTeams: [], coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map(), retryTimer: null };
+const state = { athlete: null, athleteTeams: [], athleteSession: null, coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map(), retryTimer: null };
 const SAVE_DEBOUNCE_MS = 600;
 const RETRY_MS = 12000;
 
@@ -23,6 +24,16 @@ function day() {
 }
 function dateLabel(value) { return new Intl.DateTimeFormat("en-AU", { weekday:"long", day:"numeric", month:"long" }).format(new Date(value + "T12:00:00")); }
 function shortDate(value) { return new Intl.DateTimeFormat("en-AU", { day:"numeric", month:"short" }).format(new Date(value + "T12:00:00")); }
+function monthKey(value = day()) { return value.slice(0, 7); }
+function validMonth(value) { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value || "") ? value : monthKey(); }
+function monthDate(value) { const [year, month] = validMonth(value).split("-").map(Number); return new Date(year, month - 1, 1, 12); }
+function isoDate(year, month, date) { return year + "-" + String(month).padStart(2, "0") + "-" + String(date).padStart(2, "0"); }
+function monthBounds(value) {
+  const start = monthDate(value), year = start.getFullYear(), month = start.getMonth() + 1;
+  return { year, month, firstWeekday:(start.getDay() + 6) % 7, days:new Date(year, month, 0).getDate(), start:isoDate(year, month, 1), end:isoDate(year, month, new Date(year, month, 0).getDate()) };
+}
+function shiftMonth(value, amount) { const date = monthDate(value); date.setMonth(date.getMonth() + amount); return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0"); }
+function monthLabel(value) { return new Intl.DateTimeFormat("en-AU", { month:"long", year:"numeric" }).format(monthDate(value)); }
 function route() {
   const raw = (location.hash || "#today").slice(1);
   const pair = raw.split("?");
@@ -33,7 +44,7 @@ function go(path) {
   else location.hash = "#" + path;
 }
 function coachToken() { return state.coachSession?.access_token; }
-function athleteAccessGranted() { return localStorage.getItem(athleteAccessKey) === "true"; }
+function athleteToken() { return state.athleteSession?.access_token; }
 function numeric(value) { return value === "" || value === null || value === undefined ? null : Number(value); }
 function html(parts) { return parts.join(""); }
 function toast(message) {
@@ -64,12 +75,12 @@ function coachNav() {
 }
 function shell(content, coach) {
   root.innerHTML = '<main class="shell"><header class="topbar">' +
-    '<a class="brand" href="#' + (coach ? "coach/dashboard" : "today") + '"><span class="brand-mark">C</span><span>CBI Performance</span></a>' +
+    '<a class="brand" href="#' + (coach ? "coach/dashboard" : "today") + '"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI High Performance</span></a>' +
     (coach ? '<button class="button small ghost" data-action="coach-signout">Sign out</button>' :
       (state.athlete ? '<button class="button small ghost" data-action="change-athlete">' + esc(state.athlete.name) + '</button>' : '<a class="button small ghost" href="#coach/login">Coach login</a>')) +
     "</header>" + (coach ? coachNav() : "") + content + "</main>" + (coach ? "" : athleteNav());
 }
-function loading() { root.innerHTML = '<main class="shell"><header class="topbar"><span class="brand"><span class="brand-mark">C</span><span>CBI Performance</span></span></header><div class="empty">Loading training…</div></main>'; }
+function loading() { root.innerHTML = '<main class="shell"><header class="topbar"><span class="brand"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI High Performance</span></span></header><div class="empty">Loading training…</div></main>'; }
 function empty(message) { return '<div class="card empty">' + esc(message) + "</div>"; }
 function statusPill(status) {
   const text = status === "completed" ? "Complete" : status === "in_progress" ? "In progress" : "Not started";
@@ -95,10 +106,32 @@ function supersetOptions(selected) {
 async function restoreAthlete() {
   const athleteId = localStorage.getItem(athleteKey);
   if (!athleteId) return;
-  const athletes = await getActiveAthletes();
+  const athletes = await getActiveAthletes(athleteToken());
   state.athlete = athletes.find((athlete) => athlete.id === athleteId) || null;
   if (!state.athlete) { localStorage.removeItem(athleteKey); return; }
-  state.athleteTeams = await getAthleteTeams(athleteId);
+  state.athleteTeams = await getAthleteTeams(athleteId, athleteToken());
+}
+function storedAthleteSession() {
+  try { return JSON.parse(localStorage.getItem(athleteSessionKey) || "null"); } catch { return null; }
+}
+function saveAthleteSession(session) {
+  state.athleteSession = session;
+  localStorage.setItem(athleteSessionKey, JSON.stringify(session));
+}
+async function checkAthleteSession() {
+  state.athleteSession = storedAthleteSession();
+  if (!state.athleteSession) return false;
+  try {
+    if (state.athleteSession.expires_at && state.athleteSession.expires_at * 1000 < Date.now() + 60000) {
+      saveAthleteSession(await auth.refresh(state.athleteSession.refresh_token));
+    }
+    await auth.user(athleteToken());
+    return true;
+  } catch (error) {
+    localStorage.removeItem(athleteSessionKey);
+    state.athleteSession = null;
+    return false;
+  }
 }
 function athleteAccess(message) {
   shell('<section class="login card"><div class="eyebrow">Athlete mode</div><h1>Enter team code</h1><p class="subtle">Ask your coach for the four-digit code, then choose your athlete profile.</p>' +
@@ -106,10 +139,11 @@ function athleteAccess(message) {
     '<form data-form="athlete-access" class="stack"><label>Team code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" minlength="4" maxlength="4" required aria-label="Four digit team code"></label><button class="button primary full">Continue</button></form></section>', false);
 }
 async function athletePickerData() {
+  const access = athleteToken();
   const [teams, athletes, memberships] = await Promise.all([
-    db.list("teams", {select:"id,name",active:"eq.true",order:"name.asc"}),
-    getActiveAthletes(),
-    db.list("athlete_teams", {select:"athlete_id,team_id"}),
+    db.list("teams", {select:"id,name",active:"eq.true",order:"name.asc"}, access),
+    getActiveAthletes(access),
+    db.list("athlete_teams", {select:"athlete_id,team_id"}, access),
   ]);
   const activeIds = new Set(athletes.map((athlete) => athlete.id));
   const teamIdsWithAthletes = new Set(memberships.filter((entry) => activeIds.has(entry.athlete_id)).map((entry) => entry.team_id));
@@ -137,10 +171,16 @@ async function athletePicker(teamId) {
 }
 async function athleteToday() {
   if (!state.athlete) return athleteTeamPicker();
-  const [assignments, inProgress] = await Promise.all([
-    getAssignedSessions(state.athlete.id, day()),
-    getInProgressWorkouts(state.athlete.id),
+  const access = athleteToken();
+  const month = validMonth(route().params.get("month"));
+  const bounds = monthBounds(month);
+  const [assignments, inProgress, calendarAssignments, calendarLogs] = await Promise.all([
+    getAssignedSessions(state.athlete.id, day(), access),
+    getInProgressWorkouts(state.athlete.id, access),
+    getAssignedSessionsInRange(state.athlete.id, bounds.start, bounds.end, access),
+    getWorkoutLogsInRange(state.athlete.id, bounds.start, bounds.end, access),
   ]);
+  const calendar = calendarSessions(calendarAssignments, calendarLogs);
   const todaySessionIds = new Set(assignments.map((assignment) => assignment.session?.id).filter(Boolean));
   const resumable = inProgress.filter((log) => !todaySessionIds.has(log.session_id));
   const resumeSection = resumable.length
@@ -151,18 +191,19 @@ async function athleteToday() {
     : "";
   const cards = await Promise.all(assignments.map(async (assignment) => {
     const session = assignment.session;
-    const log = await getWorkout(state.athlete.id, session.id);
+    const log = await getWorkout(state.athlete.id, session.id, access);
     let action = '<button class="button primary" data-action="start-workout" data-session="' + esc(session.id) + '">Start session</button>';
     if (log?.status === "completed") action = '<span class="pill lime">Complete</span>';
     if (log?.status === "in_progress") action = '<button class="button primary" data-action="open-workout" data-log="' + esc(log.id) + '">Resume session</button>';
-    return '<article class="card hero"><div class="eyebrow">Today’s session</div><h1>' + esc(session.name) + "</h1>" +
+    return '<article class="card hero"><div class="eyebrow">Today’s session</div><h1><button class="session-title-link" data-action="open-calendar-session" data-session="' + esc(session.id) + '">' + esc(session.name) + '</button></h1>' +
       '<p class="subtle">' + esc(session.description || "Your coach has programmed this session for you.") + "</p>" +
       '<div class="split"><span class="pill">' + (session.estimated_duration_minutes ? "Estimated " + session.estimated_duration_minutes + " min" : "Train well") + "</span>" + action + "</div></article>";
   }));
   const todayBlock = cards.join("") || (resumable.length ? "" : '<article class="card hero"><div class="eyebrow">Today</div><h1>Recovery day</h1><p class="subtle">There is no programmed session assigned to you today.</p></article>');
   shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + "</div><h1>" + dateLabel(day()) + "</h1></section>" +
-    resumeSection +
     todayBlock +
+    resumeSection +
+    scheduledTrainingsCard(month, calendar, "today") +
     '<section class="card tight"><div class="split"><div><h3>Training history</h3><p class="subtle">Review your completed sessions.</p></div><a href="#history">History ›</a></div></section>', false);
 }
 function fields(exercise) {
@@ -246,9 +287,10 @@ function workoutCards(exercises, previous, logId, done) {
   }).join("");
 }
 async function athleteWorkout(logId) {
-  const workout = await getWorkoutDetail(logId);
+  const access = athleteToken();
+  const workout = await getWorkoutDetail(logId, access);
   if (workout.log.athlete_id !== state.athlete?.id) throw new Error("Select the athlete who owns this workout.");
-  const previous = await Promise.all(workout.exercises.map((exercise) => getPreviousSets(state.athlete.id, exercise.exercise_id, logId).catch(() => [])));
+  const previous = await Promise.all(workout.exercises.map((exercise) => getPreviousSets(state.athlete.id, exercise.exercise_id, logId, access).catch(() => [])));
   const done = workout.log.status === "completed";
   const head = '<section class="page-head"><div class="split"><div><div class="eyebrow">' + (done ? "Completed session" : "Training now") + "</div><h1>" + esc(workout.log.session_name) + '</h1></div><span id="save-status" class="status saved">Saved ✓</span></div><p class="subtle">' + dateLabel(workout.log.session_date) + (workout.log.estimated_duration_minutes ? " · " + workout.log.estimated_duration_minutes + " min" : "") + "</p></section>";
   let foot = '<button class="button primary full" data-action="finish-workout" data-log="' + esc(logId) + '">Finish session</button>';
@@ -259,14 +301,91 @@ async function athleteWorkout(logId) {
 }
 async function athleteHistory() {
   if (!state.athlete) return athleteTeamPicker();
-  const sessions = await getWorkoutHistory(state.athlete.id);
+  const sessions = await getWorkoutHistory(state.athlete.id, athleteToken());
   shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + '</div><h1>Training history</h1><p class="subtle">Completed sessions are preserved exactly as performed.</p></section>' +
     (sessions.map((log) => '<button class="list-button" data-action="open-workout" data-log="' + esc(log.id) + '"><span><strong>' + esc(log.session_name) + "</strong><br><span class=\"muted\">" + shortDate(log.session_date) + (log.session_rpe != null ? " · RPE " + log.session_rpe : "") + '</span></span><span class="pill lime">View</span></button>').join("") || empty("Finish a session and it will appear here.")), false);
+}
+const sessionTypes = ["strength", "power", "conditioning", "recovery", "court"];
+function inferredSessionType(session) {
+  const text = ((session?.name || session?.session_name || "") + " " + (session?.description || session?.session_description || "")).toLowerCase();
+  if (/(power|speed|plyo|jump|sprint)/.test(text)) return "power";
+  if (/(condition|engine|aerobic|bike|fitness|metcon)/.test(text)) return "conditioning";
+  if (/(recover|mobility|rehab|prehab|restore)/.test(text)) return "recovery";
+  if (/(skill|court|shoot|basketball|game)/.test(text)) return "court";
+  return "strength";
+}
+function sessionType(session) {
+  return sessionTypes.includes(session?.session_type) ? session.session_type : inferredSessionType(session);
+}
+function toneLabel(tone) {
+  return { strength:"Strength", power:"Power / speed", conditioning:"Conditioning", recovery:"Recovery", court:"Court / skills" }[tone] || "Training";
+}
+function sessionTypeOptions(selected) {
+  const type = sessionType({session_type:selected});
+  return sessionTypes.map((value) => '<option value="' + value + '"' + (value === type ? " selected" : "") + '>' + toneLabel(value) + "</option>").join("");
+}
+function calendarStatus(log, sessionDate) {
+  if (log?.status === "completed") return "Complete";
+  if (log?.status === "in_progress") return "In progress";
+  return sessionDate > day() ? "Upcoming" : "Planned";
+}
+function calendarItem(session, log) {
+  const display = log ? {...session, name:log.session_name || session.name, session_type:log.session_type || session.session_type} : session;
+  const tone = sessionType(display), status = calendarStatus(log, session.session_date);
+  return '<button class="calendar-session tone-' + tone + '" data-action="open-calendar-session" data-session="' + esc(session.id) + '"' + (log ? ' data-log="' + esc(log.id) + '"' : "") + ' aria-label="Open ' + esc(display.name) + ' on ' + esc(dateLabel(session.session_date)) + '"><span class="calendar-session-title">' + esc(display.name) + '</span><span class="calendar-session-status">' + esc(status) + '</span></button>';
+}
+function calendarGrid(month, sessions) {
+  const bounds = monthBounds(month), byDate = new Map();
+  sessions.forEach((item) => {
+    const entries = byDate.get(item.session.session_date) || [];
+    entries.push(item);
+    byDate.set(item.session.session_date, entries);
+  });
+  const cellCount = Math.ceil((bounds.firstWeekday + bounds.days) / 7) * 7;
+  const cells = Array.from({ length:cellCount }, (_, index) => {
+    const date = index - bounds.firstWeekday + 1;
+    if (date < 1 || date > bounds.days) return '<div class="calendar-day outside" aria-hidden="true"></div>';
+    const iso = isoDate(bounds.year, bounds.month, date), items = byDate.get(iso) || [];
+    return '<section class="calendar-day' + (iso === day() ? " is-today" : "") + '"><div class="calendar-date"><span>' + date + '</span>' + (items.length > 1 ? '<span class="calendar-count">' + items.length + '</span>' : "") + '</div><div class="calendar-events">' + items.map((item) => calendarItem(item.session, item.log)).join("") + "</div></section>";
+  }).join("");
+  return '<div class="calendar-weekdays" aria-hidden="true">' + ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((name) => '<span>' + name + "</span>").join("") + '</div><div class="calendar-grid" role="grid" aria-label="' + esc(monthLabel(month)) + ' training calendar">' + cells + "</div>";
+}
+function calendarSessions(assignments, logs) {
+  const logsBySession = new Map(logs.filter((log) => log.session_id).map((log) => [log.session_id, log]));
+  const sessions = assignments.map((assignment) => ({ session:assignment.session, log:logsBySession.get(assignment.session.id) || null }));
+  const assignedSessionIds = new Set(sessions.map((item) => item.session.id));
+  logs.filter((log) => !assignedSessionIds.has(log.session_id)).forEach((log) => sessions.push({ session:{ id:log.session_id, name:log.session_name, description:"", session_type:log.session_type, session_date:log.session_date }, log }));
+  return sessions;
+}
+function scheduledTrainingsCard(month, sessions, routeName) {
+  return '<section class="card calendar-card"><div class="calendar-header"><div><div class="eyebrow">' + esc(monthLabel(month)) + '</div><h2>Scheduled trainings</h2><p class="subtle">Tap any workout to view its program or resume it.</p></div><div class="calendar-controls"><button class="button small ghost icon-button" data-action="calendar-prev" data-calendar-route="' + esc(routeName) + '" aria-label="Previous month">←</button><button class="button small ghost icon-button" data-action="calendar-next" data-calendar-route="' + esc(routeName) + '" aria-label="Next month">→</button></div></div><div class="calendar-legend"><span class="legend-item tone-strength">Strength</span><span class="legend-item tone-power">Power</span><span class="legend-item tone-conditioning">Conditioning</span><span class="legend-item tone-recovery">Recovery</span><span class="legend-item tone-court">Court</span></div>' + calendarGrid(month, sessions) + (sessions.length ? "" : '<p class="subtle calendar-empty">No sessions assigned for this month.</p>') + '</section>';
+}
+async function athleteSessionPreview(sessionId) {
+  if (!state.athlete) return athleteTeamPicker();
+  const access = athleteToken();
+  const [assignment, log] = await Promise.all([
+    getAssignedSession(state.athlete.id, sessionId, access),
+    getWorkout(state.athlete.id, sessionId, access),
+  ]);
+  if (log) return go("workout/" + log.id);
+  if (!assignment?.session) throw new Error("This session is not assigned to the selected athlete.");
+  const session = assignment.session, exercises = await getSessionExercises(session.id, access);
+  const isFuture = session.session_date > day();
+  const type = sessionType(session);
+  shell('<section class="page-head"><a class="back-link" href="#profile">← Training calendar</a><div class="eyebrow">' + esc(dateLabel(session.session_date)) + '</div><h1>' + esc(session.name) + '</h1><p class="subtle">' + esc(session.description || "Your coach has programmed this session for you.") + '</p><span class="session-type tone-' + type + '">' + esc(toneLabel(type)) + '</span></section><section class="card"><div class="split"><h2>Program</h2><span class="pill">' + (session.estimated_duration_minutes ? esc(session.estimated_duration_minutes) + " min" : "Scheduled") + '</span></div>' + (exercises.map((exercise) => '<div class="preview-exercise"><span>' + esc(exercise.exercise_name) + '</span><span class="prescription">' + plan(exercise) + '</span></div>').join("") || '<p class="subtle">Your coach has not added exercises yet.</p>') + '</section>' + (isFuture ? '<article class="card calendar-note"><h2>Scheduled</h2><p class="subtle">This session will be ready to start on ' + esc(dateLabel(session.session_date)) + '.</p></article>' : '<button class="button primary full" data-action="start-workout" data-session="' + esc(session.id) + '">Start session</button>'), false);
 }
 async function athleteProfile() {
   if (!state.athlete) return athleteTeamPicker();
   const teams = state.athleteTeams.map((entry) => entry.teams?.name).filter(Boolean);
-  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(state.athlete.name) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section><article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
+  const month = validMonth(route().params.get("month"));
+  const bounds = monthBounds(month);
+  const access = athleteToken();
+  const [assignments, logs] = await Promise.all([
+    getAssignedSessionsInRange(state.athlete.id, bounds.start, bounds.end, access),
+    getWorkoutLogsInRange(state.athlete.id, bounds.start, bounds.end, access),
+  ]);
+  const sessions = calendarSessions(assignments, logs);
+  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(state.athlete.name) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section>' + scheduledTrainingsCard(month, sessions, "profile") + '<article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
 }
 
 function storedCoachSession() {
@@ -366,7 +485,7 @@ async function setupBuilder(kind, id, templateId) {
     db.list("teams", {select:"*",active:"eq.true",order:"name.asc"}, access),
     db.list("athlete_teams", {select:"athlete_id,team_id"}, access),
   ]);
-  const b = { kind, id:id || null, sourceTemplateId:templateId || null, exercises:base[0], athletes:base[1], teams:base[2], memberships:base[3], entries:[], assignmentIds:[], teamId:"", all:false, date:day(), name:"", description:"", duration:"" };
+  const b = { kind, id:id || null, sourceTemplateId:templateId || null, exercises:base[0], athletes:base[1], teams:base[2], memberships:base[3], entries:[], assignmentIds:[], teamId:"", all:false, date:day(), name:"", description:"", sessionType:null, sessionTypeManual:false, duration:"" };
   if (id) {
     const loaded = await Promise.all([
       db.single(kind === "session" ? "programmed_sessions" : "session_templates", {select:"*",id:"eq." + id}, access),
@@ -375,6 +494,7 @@ async function setupBuilder(kind, id, templateId) {
     const record = loaded[0];
     b.entries = loaded[1];
     b.name = record.name; b.description = record.description || "";
+    b.sessionType = sessionType(record); b.sessionTypeManual = Boolean(record.session_type);
     if (kind === "session") {
       b.date = record.session_date; b.duration = record.estimated_duration_minutes || "";
       const assignments = await db.list("session_assignments", {select:"athlete_id,assigned_team_id",session_id:"eq." + id}, access);
@@ -384,7 +504,8 @@ async function setupBuilder(kind, id, templateId) {
   } else if (templateId && kind === "session") {
     const template = await db.single("session_templates", {select:"*",id:"eq." + templateId}, access);
     const entries = await db.list("template_exercises", {select:"*",template_id:"eq." + templateId,order:"position.asc"}, access);
-    b.name = template.name; b.description = template.description || ""; b.entries = entries;
+    b.name = template.name; b.description = template.description || "";
+    b.sessionType = sessionType(template); b.sessionTypeManual = Boolean(template.session_type); b.entries = entries;
   }
   if (!b.entries.length && b.exercises.length) b.entries = [blankEntry(b.exercises[0])];
   state.builder = b;
@@ -397,10 +518,11 @@ function builderInputs(entry, index, library) {
 function builder() {
   const b = state.builder;
   const isSession = b.kind === "session";
+  const selectedSessionType = sessionTypes.includes(b.sessionType) ? b.sessionType : inferredSessionType(b);
   const people = b.athletes.map((athlete) => '<option value="' + esc(athlete.id) + '"' + (b.assignmentIds.includes(athlete.id) ? " selected" : "") + ">" + esc(athlete.name) + "</option>").join("");
   const teams = '<option value="">No team</option>' + b.teams.map((team) => '<option value="' + esc(team.id) + '"' + (b.teamId === team.id ? " selected" : "") + ">" + esc(team.name) + "</option>").join("");
   shell('<section class="page-head"><div class="eyebrow">' + (b.id ? "Edit" : "Create") + " " + b.kind + '</div><h1>' + (isSession ? "Program session" : "Save template") + '</h1><p class="subtle">Fields stay optional so programming remains fast.</p></section><form data-form="builder" class="stack">' +
-    '<section class="card"><div class="grid two">' + (isSession ? '<label>Date<input name="date" type="date" value="' + esc(b.date) + '"></label>' : "") + '<label>Name<input name="name" required value="' + esc(b.name) + '"></label>' + (isSession ? '<label>Estimated minutes<input name="duration" type="number" min="1" value="' + esc(b.duration) + '"></label>' : "") + '</div><label>Description<textarea name="description">' + esc(b.description) + '</textarea></label></section>' +
+    '<section class="card"><div class="grid two">' + (isSession ? '<label>Date<input name="date" type="date" value="' + esc(b.date) + '"></label>' : "") + '<label>Name<input data-builder-name name="name" required value="' + esc(b.name) + '"></label><label>Session type<select name="session_type" data-session-type data-manual="' + (b.sessionTypeManual ? "true" : "false") + '">' + sessionTypeOptions(selectedSessionType) + '</select></label>' + (isSession ? '<label>Estimated minutes<input name="duration" type="number" min="1" value="' + esc(b.duration) + '"></label>' : "") + '</div><label>Description<textarea data-builder-description name="description">' + esc(b.description) + '</textarea></label><p class="subtle builder-colour-hint">This saved type controls the athlete calendar colour. The suggested type updates from the name until you choose one.</p></section>' +
     '<section><div class="split"><h2>Exercises</h2><button type="button" class="button small" data-action="new-exercise">+ New exercise</button></div>' + b.entries.map((entry,index) => builderInputs(entry,index,b.exercises)).join("") + '<button type="button" class="button full ghost" data-action="add-entry">+ Add exercise</button></section>' +
     (isSession ? '<section class="card"><div class="split"><h2>Assign athletes</h2><button type="button" class="button small ghost" data-action="new-team">+ Team</button></div><div class="grid two"><label>Team<select name="team">' + teams + '</select></label><label>Individual athletes<select multiple name="athletes" size="5">' + people + '</select></label></div><label class="inline"><input type="checkbox" name="everyone"' + (b.all ? " checked" : "") + '> Everyone active</label><p class="subtle">A selected team expands to all of its active members. You can also add individual athletes.</p></section>' : "") +
     '<button class="button primary full">Save ' + (isSession ? "session" : "template") + "</button></form>", true);
@@ -476,7 +598,8 @@ async function saveBuilder(form) {
     if (!selected.size) throw new Error("Assign at least one athlete, team, or everyone.");
   }
   let recordId = b.id;
-  const body = {name:values.get("name"),description:values.get("description") || null,created_by:state.coachProfile.id};
+  const requestedType = values.get("session_type");
+  const body = {name:values.get("name"),description:values.get("description") || null,session_type:sessionTypes.includes(requestedType) ? requestedType : inferredSessionType({name:values.get("name"),description:values.get("description")}),created_by:state.coachProfile.id};
   if (isSession) { body.session_date = values.get("date"); body.estimated_duration_minutes = numeric(values.get("duration")); }
   const table = isSession ? "programmed_sessions" : "session_templates";
   if (recordId) {
@@ -528,7 +651,7 @@ async function pushDrafts(logId) {
   let ok = true;
   for (const item of items) {
     try {
-      await saveSet(item.record);
+      await saveSet(item.record, athleteToken());
       draftRemove(item.logId, item.record, item.record);
     } catch (error) { console.error(error); ok = false; }
   }
@@ -544,7 +667,7 @@ function scheduleSave(row, instant) {
   saveStatus("Saving…", "saving");
   const run = () => {
     state.timers.delete(key);
-    const request = saveSet(record).then(() => {
+    const request = saveSet(record, athleteToken()).then(() => {
       draftRemove(logId, record, record);
       if (!outstandingDrafts(logId).length) saveStatus("Saved ✓", "saved");
     }).catch((error) => {
@@ -571,12 +694,12 @@ async function flushSaves() {
 }
 async function showExerciseHistory(exerciseId) {
   if (!exerciseId) return toast("This custom exercise has no library history yet.");
-  const rows = await getExerciseHistory(state.athlete.id, exerciseId);
+  const rows = await getExerciseHistory(state.athlete.id, exerciseId, athleteToken());
   modal('<div class="split"><div><div class="eyebrow">Previous performance</div><h2>Exercise history</h2></div><button class="button small ghost" data-action="close-modal">×</button></div>' +
     (rows.map((row) => '<div class="previous-line"><strong>' + shortDate(row.session_date) + "</strong><span>" + esc(row.summary || "No result") + "</span></div>").join("") || "<p class='subtle'>No completed history yet.</p>"));
 }
 async function openWorkoutForSession(sessionId) {
-  const log = await startWorkout(state.athlete.id, sessionId);
+  const log = await startWorkout(state.athlete.id, sessionId, athleteToken());
   go("workout/" + log.id);
 }
 function copyPrior(exerciseId) {
@@ -637,6 +760,8 @@ function captureBuilder() {
   const values = new FormData(form), b = state.builder;
   b.name = values.get("name") || "";
   b.description = values.get("description") || "";
+  b.sessionType = values.get("session_type") || inferredSessionType(b);
+  b.sessionTypeManual = form.querySelector("[data-session-type]")?.dataset.manual === "true";
   b.date = values.get("date") || b.date;
   b.duration = values.get("duration") || "";
   b.teamId = values.get("team") || "";
@@ -659,16 +784,24 @@ async function coachAthleteHistory(athleteId) {
 async function eventAction(action, element) {
   if (action === "reload") return render();
   if (action === "select-athlete") {
-    const athletes = await getActiveAthletes();
+    const athletes = await getActiveAthletes(athleteToken());
     state.athlete = athletes.find((athlete) => athlete.id === element.dataset.id);
     if (!state.athlete) throw new Error("That athlete is no longer active.");
     localStorage.setItem(athleteKey, state.athlete.id);
-    state.athleteTeams = await getAthleteTeams(state.athlete.id);
+    state.athleteTeams = await getAthleteTeams(state.athlete.id, athleteToken());
     return go("today");
   }
   if (action === "select-team") return athletePicker(element.dataset.team);
   if (action === "choose-another-team") return athleteTeamPicker();
   if (action === "change-athlete") { localStorage.removeItem(athleteKey); state.athlete = null; return athleteTeamPicker(); }
+  if (action === "calendar-prev" || action === "calendar-next") {
+    const month = validMonth(route().params.get("month"));
+    return go((element.dataset.calendarRoute || "profile") + "?month=" + shiftMonth(month, action === "calendar-prev" ? -1 : 1));
+  }
+  if (action === "open-calendar-session") {
+    if (element.dataset.log) return go("workout/" + element.dataset.log);
+    return athleteSessionPreview(element.dataset.session);
+  }
   if (action === "start-workout") return openWorkoutForSession(element.dataset.session);
   if (action === "open-workout") return go("workout/" + element.dataset.log);
   if (action === "copy-previous") return copyPrior(element.dataset.exercise);
@@ -725,6 +858,16 @@ document.addEventListener("input", (event) => {
     const search = event.target.value.trim().toLowerCase();
     document.querySelectorAll("[data-exercise-card]").forEach((card) => card.classList.toggle("hidden", !card.dataset.search.includes(search)));
   }
+  if (event.target.matches("[data-builder-name],[data-builder-description]")) {
+    const form = event.target.closest('[data-form="builder"]');
+    const type = form?.querySelector("[data-session-type]");
+    if (form && type && type.dataset.manual !== "true") {
+      type.value = inferredSessionType({name:form.querySelector('[name="name"]')?.value, description:form.querySelector('[name="description"]')?.value});
+    }
+  }
+});
+document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-session-type]")) event.target.dataset.manual = "true";
 });
 document.addEventListener("focusout", (event) => {
   const input = event.target.closest("[data-set-input]");
@@ -746,7 +889,7 @@ document.addEventListener("submit", (event) => {
       const pin = String(new FormData(form).get("pin") || "");
       const allowed = await verifyAthleteEntryPin(pin);
       if (!allowed) return athleteAccess("That code is not correct. Try again or ask your coach.");
-      localStorage.setItem(athleteAccessKey, "true");
+      saveAthleteSession(await auth.signInAnonymously());
       return go("today");
     }
     if (form.dataset.form === "athlete-access-code") {
@@ -760,7 +903,7 @@ document.addEventListener("submit", (event) => {
     if (form.dataset.form === "finish") {
       if (!await flushSaves()) { toast("Some sets are not saved yet. Reconnect and try again."); return; }
       const values = new FormData(form);
-      await finishWorkout(form.dataset.log, numeric(values.get("rpe")), values.get("notes"));
+      await finishWorkout(form.dataset.log, numeric(values.get("rpe")), values.get("notes"), athleteToken());
       closeModal(); toast("Session complete ✓"); return go("workout/" + form.dataset.log);
     }
     if (form.dataset.form === "builder") return saveBuilder(form);
@@ -806,10 +949,11 @@ async function render() {
       if (pieces[1] === "exercise") return exerciseEditor(pieces[2] === "new" ? null : pieces[2]);
       return coachDashboard();
     }
-    if (!athleteAccessGranted()) return athleteAccess();
+    if (!await checkAthleteSession()) return athleteAccess();
     await restoreAthlete();
     if (pieces[0] === "today") return athleteToday();
     if (pieces[0] === "workout") return athleteWorkout(pieces[1]);
+    if (pieces[0] === "session") return athleteSessionPreview(pieces[1]);
     if (pieces[0] === "history") return athleteHistory();
     if (pieces[0] === "profile") return athleteProfile();
     return athleteToday();

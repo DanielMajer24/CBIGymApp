@@ -1,4 +1,4 @@
-# CBI Performance
+# CBI High Performance
 
 A lightweight, mobile-first Strength & Conditioning PWA for a small squad.
 

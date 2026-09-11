@@ -1,4 +1,4 @@
--- Apply this migration to an existing CBI Performance Supabase project.
+-- Apply this migration to an existing CBI High Performance Supabase project.
 -- New projects receive these fields from supabase/schema.sql automatically.
 
 alter table public.template_exercises

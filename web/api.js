@@ -83,6 +83,13 @@ export const auth = {
       body: JSON.stringify({ email, password }),
     });
   },
+  async signInAnonymously() {
+    return request("/auth/v1/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  },
   async refresh(refreshToken) {
     return request("/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
@@ -107,14 +114,35 @@ export async function getAthleteTeams(athleteId, token) {
 }
 
 export async function getAssignedSessions(athleteId, date, token) {
+  return getAssignedSessionsInRange(athleteId, date, date, token);
+}
+
+function normaliseAssignment(assignment) {
+  return {
+    ...assignment,
+    session: Array.isArray(assignment.programmed_sessions) ? assignment.programmed_sessions[0] : assignment.programmed_sessions,
+  };
+}
+
+export async function getAssignedSessionsInRange(athleteId, startDate, endDate, token) {
   const assignments = await db.list("session_assignments", {
-    select: "id,session_id,programmed_sessions!session_assignments_session_id_fkey(id,session_date,name,description,estimated_duration_minutes)",
+    select: "id,session_id,programmed_sessions!session_assignments_session_id_fkey(id,session_date,name,description,session_type,estimated_duration_minutes)",
     athlete_id: `eq.${athleteId}`,
   }, token);
   return assignments
-    .map((assignment) => ({ ...assignment, session: Array.isArray(assignment.programmed_sessions) ? assignment.programmed_sessions[0] : assignment.programmed_sessions }))
-    .filter(({ session }) => session?.session_date === date)
-    .sort((a, b) => a.session.name.localeCompare(b.session.name));
+    .map(normaliseAssignment)
+    .filter(({ session }) => session?.session_date >= startDate && session?.session_date <= endDate)
+    .sort((a, b) => a.session.session_date.localeCompare(b.session.session_date) || a.session.name.localeCompare(b.session.name));
+}
+
+export async function getAssignedSession(athleteId, sessionId, token) {
+  const assignments = await db.list("session_assignments", {
+    select: "id,session_id,programmed_sessions!session_assignments_session_id_fkey(id,session_date,name,description,session_type,estimated_duration_minutes)",
+    athlete_id: `eq.${athleteId}`,
+    session_id: `eq.${sessionId}`,
+    limit: "1",
+  }, token);
+  return assignments[0] ? normaliseAssignment(assignments[0]) : null;
 }
 
 export function getSessionExercises(sessionId, token) {
@@ -165,14 +193,25 @@ export function getExerciseHistory(athleteId, exerciseId, token) {
 
 export function getWorkoutHistory(athleteId, token) {
   return db.list("workout_logs", {
-    select: "id,session_date,session_name,status,completed_at,session_rpe", athlete_id: `eq.${athleteId}`,
+    select: "id,session_date,session_name,session_type,status,completed_at,session_rpe", athlete_id: `eq.${athleteId}`,
     status: "eq.completed", order: "session_date.desc", limit: "40",
+  }, token);
+}
+
+export function getWorkoutLogsInRange(athleteId, startDate, endDate, token) {
+  return db.list("workout_logs", {
+    select: "id,session_id,session_date,session_name,session_type,status,completed_at,session_rpe",
+    athlete_id: `eq.${athleteId}`,
+    session_date: `gte.${startDate}`,
+    and: `(session_date.lte.${endDate})`,
+    order: "session_date.asc",
+    limit: "100",
   }, token);
 }
 
 export function getInProgressWorkouts(athleteId, token) {
   return db.list("workout_logs", {
-    select: "id,session_id,session_name,session_date,status", athlete_id: `eq.${athleteId}`,
+    select: "id,session_id,session_name,session_type,session_date,status", athlete_id: `eq.${athleteId}`,
     status: "eq.in_progress", order: "session_date.desc", limit: "20",
   }, token);
 }
