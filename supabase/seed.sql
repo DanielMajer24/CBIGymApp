@@ -45,6 +45,9 @@ insert into public.template_exercises (id, template_id, exercise_id, position, e
   ('00000000-0000-4000-8000-000000000264', '00000000-0000-4000-8000-000000000251', '00000000-0000-4000-8000-000000000207', 4, 'Calf Raise', 'weight_reps', 3, 12, 7, 60)
 on conflict (id) do update set sets = excluded.sets, prescribed_reps = excluded.prescribed_reps, target_rpe = excluded.target_rpe;
 
+update public.template_exercises set superset_group = 'A'
+where id in ('00000000-0000-4000-8000-000000000263', '00000000-0000-4000-8000-000000000264');
+
 insert into public.programmed_sessions (id, session_date, name, description, estimated_duration_minutes) values
   ('00000000-0000-4000-8000-000000000301', current_date - 14, 'Lower Strength A', 'Build quality positions and leave a rep in reserve.', 55),
   ('00000000-0000-4000-8000-000000000302', current_date, 'Lower Body — Power', 'Move with intent. Quality over fatigue.', 55),
@@ -62,6 +65,9 @@ insert into public.session_exercises (id, session_id, exercise_id, position, exe
   ('00000000-0000-4000-8000-000000000421', '00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000204', 1, 'Bench Press', 'weight_reps', 4, 6, 75, 7, 120, null),
   ('00000000-0000-4000-8000-000000000422', '00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000205', 2, 'Pull Up', 'reps_only', 3, 8, null, 7, 90, null)
 on conflict (id) do update set sets = excluded.sets, prescribed_reps = excluded.prescribed_reps, prescribed_load_kg = excluded.prescribed_load_kg;
+
+update public.session_exercises set superset_group = 'A'
+where id in ('00000000-0000-4000-8000-000000000421', '00000000-0000-4000-8000-000000000422');
 
 insert into public.session_assignments (session_id, athlete_id, assigned_team_id)
 select s.id, p.id, '00000000-0000-4000-8000-000000000101'

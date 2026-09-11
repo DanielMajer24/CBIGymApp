@@ -4,6 +4,10 @@ Run schema.sql and then seed.sql in a new Supabase project. The legacy
 Streamlit tables are structurally incompatible with this application, so a
 separate project is the lowest-risk migration path.
 
+For an already deployed CBI Performance database, run each numbered file in
+migrations/ once, in order. To enable supersets now, run
+migrations/001_add_supersets.sql before deploying the matching frontend.
+
 ## Coach account
 
 1. In Supabase Studio, create the coach under Authentication → Users.
@@ -39,5 +43,6 @@ programmed_sessions and session_exercises are the editable program.
 session_assignments resolves team and individual delivery. Starting a workout
 calls start_or_resume_workout, which atomically enforces one log per
 athlete/session and copies all prescriptions into workout_logs and
-workout_exercises. set_logs contains actual performance. Historical screens
-use these snapshots, never mutable library or programme rows.
+workout_exercises. Superset groups are copied at the same time. set_logs
+contains actual performance. Historical screens use these snapshots, never
+mutable library or programme rows.

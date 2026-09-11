@@ -54,7 +54,8 @@ authentication, and the browser directly calls a constrained public API.
 - Supabase Auth login checked against a server-side coach profile.
 - Dashboard, sessions, templates, athletes, teams, and exercise library.
 - Session builder supports date, duration, team, individual, or everyone
-  assignments and accessible up/down exercise ordering.
+  assignments, accessible up/down exercise ordering, and optional A–F superset
+  groups.
 - Templates can seed a new scheduled session.
 - Workout review is read-only and shows progress plus individual results.
 
@@ -181,7 +182,8 @@ Coach:
 
 1. Create an athlete and team, assign the athlete to the team.
 2. Create an exercise.
-3. Build a session, assign a team and/or individual athlete, and save.
+3. Build a session, assign a team and/or individual athlete, and save. Put
+   paired exercises in the same Superset group to prescribe them together.
 4. Save a template and create a session from it.
 
 Athlete:

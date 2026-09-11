@@ -63,6 +63,7 @@ create table public.template_exercises (
   template_id uuid not null references public.session_templates(id) on delete cascade,
   exercise_id uuid references public.exercises(id) on delete set null,
   position integer not null check (position > 0),
+  superset_group text check (superset_group is null or superset_group ~ '^[A-Z0-9]{1,8}$'),
   exercise_name text not null,
   tracking_type public.tracking_type not null,
   sets integer not null default 3 check (sets between 1 and 30),
@@ -96,6 +97,7 @@ create table public.session_exercises (
   session_id uuid not null references public.programmed_sessions(id) on delete cascade,
   exercise_id uuid references public.exercises(id) on delete set null,
   position integer not null check (position > 0),
+  superset_group text check (superset_group is null or superset_group ~ '^[A-Z0-9]{1,8}$'),
   exercise_name text not null,
   tracking_type public.tracking_type not null,
   sets integer not null default 3 check (sets between 1 and 30),
@@ -149,6 +151,7 @@ create table public.workout_exercises (
   source_session_exercise_id uuid,
   exercise_id uuid,
   position integer not null,
+  superset_group text check (superset_group is null or superset_group ~ '^[A-Z0-9]{1,8}$'),
   exercise_name text not null,
   tracking_type public.tracking_type not null,
   sets integer not null,
@@ -237,12 +240,12 @@ begin
   returning * into created_log;
 
   insert into public.workout_exercises (
-    workout_log_id, source_session_exercise_id, exercise_id, position,
+    workout_log_id, source_session_exercise_id, exercise_id, position, superset_group,
     exercise_name, tracking_type, sets, prescribed_reps, prescribed_load_kg,
     prescribed_percent, target_rpe, target_rir, tempo, rest_seconds,
     coach_notes, instructions, video_url, custom_unit
   )
-  select created_log.id, se.id, se.exercise_id, se.position, se.exercise_name,
+  select created_log.id, se.id, se.exercise_id, se.position, se.superset_group, se.exercise_name,
     se.tracking_type, se.sets, se.prescribed_reps, se.prescribed_load_kg,
     se.prescribed_percent, se.target_rpe, se.target_rir, se.tempo,
     se.rest_seconds, se.coach_notes, se.instructions, se.video_url, se.custom_unit

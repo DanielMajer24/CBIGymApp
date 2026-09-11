@@ -84,6 +84,10 @@ function plan(exercise) {
   if (exercise.rest_seconds != null) values.push(exercise.rest_seconds + "s rest");
   return values.map((value) => "<span>" + esc(value) + "</span>").join("");
 }
+function supersetOptions(selected) {
+  const groups = ["", "A", "B", "C", "D", "E", "F"];
+  return groups.map((group) => '<option value="' + group + '"' + (group === (selected || "") ? " selected" : "") + ">" + (group ? "Superset " + group : "No superset") + "</option>").join("");
+}
 
 async function restoreAthlete() {
   const athleteId = localStorage.getItem(athleteKey);
@@ -189,11 +193,21 @@ function exerciseCard(exercise, previous, logId, done) {
   const prior = previous.length ? previous.map((entry) => '<div class="previous-line"><span>Set ' + entry.set_number + "</span><span>" + formattedSet(entry, exercise.tracking_type) + "</span></div>").join("") : "<p>No previous completed result.</p>";
   const rows = Array.from({length:exercise.sets}, (_, index) => setInput(exercise, index + 1, logId, done)).join("");
   return '<article class="card exercise-card"><div class="exercise-top"><div><div class="eyebrow">Exercise ' + exercise.position + '</div><h2 class="exercise-title">' + esc(exercise.exercise_name) + "</h2></div>" +
+    (exercise.superset_group ? '<span class="pill blue">Superset ' + esc(exercise.superset_group) + "</span>" : "") +
     '<button class="button small ghost" data-action="copy-previous" data-exercise="' + esc(exercise.id) + '"' + (done ? " disabled" : "") + ">Same as previous</button></div>" +
     '<div class="prescription">' + plan(exercise) + "</div>" + (exercise.coach_notes ? '<p class="notice">' + esc(exercise.coach_notes) + "</p>" : "") +
     (exercise.instructions ? '<p class="subtle">' + esc(exercise.instructions) + "</p>" : "") +
     (exercise.video_url ? '<p><a target="_blank" rel="noreferrer" href="' + esc(exercise.video_url) + '">View exercise demo ↗</a></p>' : "") +
     '<div class="history"><details><summary>Last time' + (previous.length ? " · " + shortDate(previous[0].session_date) : "") + "</summary>" + prior + '</details><button class="button small ghost" data-action="exercise-history" data-library-exercise="' + esc(exercise.exercise_id || "") + '">View history</button></div><div class="divider"></div><div class="field-label">Today</div>' + rows + "</article>";
+}
+function workoutCards(exercises, previous, logId, done) {
+  let lastGroup = null;
+  return exercises.map((exercise, index) => {
+    const header = exercise.superset_group && exercise.superset_group !== lastGroup
+      ? '<div class="eyebrow superset-heading">Superset ' + esc(exercise.superset_group) + ' · complete each exercise, then rest</div>' : "";
+    lastGroup = exercise.superset_group || null;
+    return header + exerciseCard(exercise, previous[index], logId, done);
+  }).join("");
 }
 async function athleteWorkout(logId) {
   const workout = await getWorkoutDetail(logId);
@@ -203,7 +217,7 @@ async function athleteWorkout(logId) {
   const head = '<section class="page-head"><div class="split"><div><div class="eyebrow">' + (done ? "Completed session" : "Training now") + "</div><h1>" + esc(workout.log.session_name) + '</h1></div><span id="save-status" class="status saved">Saved ✓</span></div><p class="subtle">' + dateLabel(workout.log.session_date) + (workout.log.estimated_duration_minutes ? " · " + workout.log.estimated_duration_minutes + " min" : "") + "</p></section>";
   let foot = '<button class="button primary full" data-action="finish-workout" data-log="' + esc(logId) + '">Finish session</button>';
   if (done) foot = '<article class="card hero"><div class="eyebrow">Session complete ✓</div><h1>Great work.</h1><p class="subtle">' + workout.exercises.filter((item) => item.setLogs.length).length + "/" + workout.exercises.length + " exercises recorded" + (workout.log.session_rpe != null ? " · Session RPE " + workout.log.session_rpe : "") + "</p></article>";
-  shell(head + workout.exercises.map((item, index) => exerciseCard(item, previous[index], logId, done)).join("") + foot, false);
+  shell(head + workoutCards(workout.exercises, previous, logId, done) + foot, false);
   if (done) { try { localStorage.removeItem("cbi-drafts-" + logId); } catch (error) { console.warn(error); } stopRetryLoop(); }
   else if (outstandingDrafts(logId).length) pushDrafts(logId).catch(() => {});
 }
@@ -293,12 +307,12 @@ async function coachReview(sessionId) {
 async function coachLogDetail(logId) {
   const workout = await getWorkoutDetail(logId, coachToken());
   shell('<section class="page-head"><div class="eyebrow">Athlete result · ' + shortDate(workout.log.session_date) + '</div><h1>' + esc(workout.log.session_name) + '</h1><p class="subtle">' + statusPill(workout.log.status) + (workout.log.session_rpe != null ? " Session RPE " + workout.log.session_rpe : "") + "</p></section>" +
-    workout.exercises.map((exercise) => '<article class="card session-log"><h2>' + esc(exercise.exercise_name) + '</h2><div class="prescription">' + plan(exercise) + "</div>" +
+    workout.exercises.map((exercise) => '<article class="card session-log"><div class="split"><h2>' + esc(exercise.exercise_name) + '</h2>' + (exercise.superset_group ? '<span class="pill blue">Superset ' + esc(exercise.superset_group) + "</span>" : "") + '</div><div class="prescription">' + plan(exercise) + "</div>" +
       Array.from({length:exercise.sets}, (_, index) => { const set = exercise.setLogs.find((row) => row.set_number === index + 1); return '<div class="previous-line"><span>Set ' + (index + 1) + "</span><strong>" + (set ? formattedSet(set, exercise.tracking_type) : "—") + "</strong></div>"; }).join("") + "</article>").join("") +
     (workout.log.athlete_notes ? '<article class="card"><h3>Athlete notes</h3><p>' + esc(workout.log.athlete_notes) + "</p></article>" : ""), true);
 }
 function blankEntry(exercise) {
-  return { exercise_id:exercise?.id || "", exercise_name:exercise?.name || "", tracking_type:exercise?.tracking_type || "weight_reps", sets:3, prescribed_reps:"", prescribed_load_kg:"", prescribed_percent:"", target_rpe:"", target_rir:"", tempo:"", rest_seconds:"", coach_notes:"", instructions:exercise?.default_instructions || "", video_url:exercise?.video_url || "", custom_unit:"" };
+  return { exercise_id:exercise?.id || "", exercise_name:exercise?.name || "", tracking_type:exercise?.tracking_type || "weight_reps", sets:3, superset_group:"", prescribed_reps:"", prescribed_load_kg:"", prescribed_percent:"", target_rpe:"", target_rir:"", tempo:"", rest_seconds:"", coach_notes:"", instructions:exercise?.default_instructions || "", video_url:exercise?.video_url || "", custom_unit:"" };
 }
 async function setupBuilder(kind, id, templateId) {
   const access = coachToken();
@@ -334,7 +348,7 @@ async function setupBuilder(kind, id, templateId) {
 function builderInputs(entry, index, library) {
   const choices = ['<option value="">Choose exercise</option>'].concat(library.map((exercise) => '<option value="' + esc(exercise.id) + '"' + (entry.exercise_id === exercise.id ? " selected" : "") + '>' + esc(exercise.name) + "</option>")).join("");
   return '<article class="card coach-builder-item"><div class="split"><h3>Exercise ' + (index + 1) + '</h3><div class="reorder"><button type="button" class="button small ghost" data-action="move-entry" data-index="' + index + '" data-direction="-1">↑</button><button type="button" class="button small ghost" data-action="move-entry" data-index="' + index + '" data-direction="1">↓</button><button type="button" class="button small danger" data-action="remove-entry" data-index="' + index + '">×</button></div></div>' +
-    '<div class="grid two"><label>Exercise<select name="exercise_id_' + index + '">' + choices + '</select></label><label>Sets<input name="sets_' + index + '" type="number" min="1" max="30" value="' + esc(entry.sets || 3) + '"></label><label>Reps<input name="reps_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_reps || "") + '"></label><label>Load (kg)<input name="load_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_load_kg || "") + '"></label><label>Percentage<input name="percent_' + index + '" type="number" min="0" max="100" step=".5" value="' + esc(entry.prescribed_percent || "") + '"></label><label>Target RPE<input name="rpe_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rpe || "") + '"></label><label>Rest (seconds)<input name="rest_' + index + '" type="number" min="0" value="' + esc(entry.rest_seconds || "") + '"></label><label>Tempo<input name="tempo_' + index + '" value="' + esc(entry.tempo || "") + '"></label></div><label>Coach notes<textarea name="notes_' + index + '">' + esc(entry.coach_notes || "") + '</textarea></label><details><summary>More prescription options</summary><div class="grid two"><label>Target RIR<input name="rir_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rir || "") + '"></label><label>Custom unit<input name="unit_' + index + '" value="' + esc(entry.custom_unit || "") + '"></label><label>Video URL<input name="video_' + index + '" type="url" value="' + esc(entry.video_url || "") + '"></label></div><label>Exercise instructions<textarea name="instructions_' + index + '">' + esc(entry.instructions || "") + "</textarea></label></details></article>";
+    '<div class="grid two"><label>Exercise<select name="exercise_id_' + index + '">' + choices + '</select></label><label>Sets<input name="sets_' + index + '" type="number" min="1" max="30" value="' + esc(entry.sets || 3) + '"></label><label>Superset<select name="superset_' + index + '">' + supersetOptions(entry.superset_group) + '</select></label><label>Reps<input name="reps_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_reps || "") + '"></label><label>Load (kg)<input name="load_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_load_kg || "") + '"></label><label>Percentage<input name="percent_' + index + '" type="number" min="0" max="100" step=".5" value="' + esc(entry.prescribed_percent || "") + '"></label><label>Target RPE<input name="rpe_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rpe || "") + '"></label><label>Rest (seconds)<input name="rest_' + index + '" type="number" min="0" value="' + esc(entry.rest_seconds || "") + '"></label><label>Tempo<input name="tempo_' + index + '" value="' + esc(entry.tempo || "") + '"></label></div><label>Coach notes<textarea name="notes_' + index + '">' + esc(entry.coach_notes || "") + '</textarea></label><details><summary>More prescription options</summary><div class="grid two"><label>Target RIR<input name="rir_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rir || "") + '"></label><label>Custom unit<input name="unit_' + index + '" value="' + esc(entry.custom_unit || "") + '"></label><label>Video URL<input name="video_' + index + '" type="url" value="' + esc(entry.video_url || "") + '"></label></div><label>Exercise instructions<textarea name="instructions_' + index + '">' + esc(entry.instructions || "") + "</textarea></label></details></article>";
 }
 function builder() {
   const b = state.builder;
@@ -404,7 +418,7 @@ async function saveBuilder(form) {
   const entries = b.entries.map((entry,index) => {
     const exercise = b.exercises.find((item) => item.id === values.get("exercise_id_" + index));
     if (!exercise) return null;
-    return { exercise_id:exercise.id, exercise_name:exercise.name, tracking_type:exercise.tracking_type, position:index + 1,
+    return { exercise_id:exercise.id, exercise_name:exercise.name, tracking_type:exercise.tracking_type, position:index + 1, superset_group:values.get("superset_" + index) || null,
       sets:Number(values.get("sets_" + index) || 3), prescribed_reps:numeric(values.get("reps_" + index)), prescribed_load_kg:numeric(values.get("load_" + index)),
       prescribed_percent:numeric(values.get("percent_" + index)), target_rpe:numeric(values.get("rpe_" + index)), target_rir:numeric(values.get("rir_" + index)), rest_seconds:numeric(values.get("rest_" + index)),
       tempo:values.get("tempo_" + index) || null, coach_notes:values.get("notes_" + index) || null, instructions:values.get("instructions_" + index) || exercise.default_instructions || null, video_url:values.get("video_" + index) || exercise.video_url || null, custom_unit:values.get("unit_" + index) || null };
@@ -586,7 +600,7 @@ function captureBuilder() {
   b.all = Boolean(values.get("everyone"));
   b.entries = b.entries.map((old, index) => {
     const exercise = b.exercises.find((item) => item.id === values.get("exercise_id_" + index));
-    return {...old, exercise_id:exercise?.id || "", exercise_name:exercise?.name || "", tracking_type:exercise?.tracking_type || old.tracking_type,
+    return {...old, exercise_id:exercise?.id || "", exercise_name:exercise?.name || "", tracking_type:exercise?.tracking_type || old.tracking_type, superset_group:values.get("superset_" + index) || "",
       sets:values.get("sets_" + index) || 3, prescribed_reps:values.get("reps_" + index) || "", prescribed_load_kg:values.get("load_" + index) || "",
       prescribed_percent:values.get("percent_" + index) || "", target_rpe:values.get("rpe_" + index) || "", target_rir:values.get("rir_" + index) || "", rest_seconds:values.get("rest_" + index) || "",
       tempo:values.get("tempo_" + index) || "", coach_notes:values.get("notes_" + index) || "", instructions:values.get("instructions_" + index) || "", video_url:values.get("video_" + index) || "", custom_unit:values.get("unit_" + index) || ""};
