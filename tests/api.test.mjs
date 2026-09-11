@@ -25,6 +25,20 @@ test("REST upsert uses a conflict target and merge preference", async () => {
   assert.deepEqual(JSON.parse(received.options.body), {workout_exercise_id:"exercise-id",set_number:1,reps:5});
 });
 
+test("in-progress workouts query is scoped to the athlete and status", async () => {
+  let received;
+  global.fetch = async (url) => {
+    received = String(url);
+    return new Response(JSON.stringify([]), {status:200,headers:{"Content-Type":"application/json"}});
+  };
+
+  await api.getInProgressWorkouts("athlete-9");
+
+  assert.match(received, /workout_logs\?/);
+  assert.match(received, /athlete_id=eq\.athlete-9/);
+  assert.match(received, /status=eq\.in_progress/);
+});
+
 test("today assignments normalize embedded relations and filter by date", async () => {
   global.fetch = async () => new Response(JSON.stringify([
     { id:"assignment-1", session_id:"session-1", programmed_sessions:[{id:"session-1",session_date:"2026-09-11",name:"Power"}] },

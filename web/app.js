@@ -1,13 +1,15 @@
 import {
   configured, auth, db, getActiveAthletes, getAthleteTeams, getAssignedSessions,
   getWorkout, getWorkoutDetail, startWorkout, saveSet, finishWorkout,
-  getPreviousSets, getExerciseHistory, getWorkoutHistory, getCoachProfile,
+  getPreviousSets, getExerciseHistory, getWorkoutHistory, getInProgressWorkouts, getCoachProfile,
 } from "./api.js";
 
 const root = document.querySelector("#app");
 const athleteKey = "cbi-athlete-id";
 const coachKey = "cbi-coach-session";
-const state = { athlete: null, athleteTeams: [], coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map() };
+const state = { athlete: null, athleteTeams: [], coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map(), retryTimer: null };
+const SAVE_DEBOUNCE_MS = 600;
+const RETRY_MS = 12000;
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[char]));
@@ -24,7 +26,10 @@ function route() {
   const pair = raw.split("?");
   return { path: pair[0], params: new URLSearchParams(pair[1] || "") };
 }
-function go(path) { location.hash = "#" + path; }
+function go(path) {
+  if (location.hash === "#" + path) render();
+  else location.hash = "#" + path;
+}
 function coachToken() { return state.coachSession?.access_token; }
 function numeric(value) { return value === "" || value === null || value === undefined ? null : Number(value); }
 function html(parts) { return parts.join(""); }
@@ -98,7 +103,18 @@ async function athletePicker() {
 }
 async function athleteToday() {
   if (!state.athlete) return athletePicker();
-  const assignments = await getAssignedSessions(state.athlete.id, day());
+  const [assignments, inProgress] = await Promise.all([
+    getAssignedSessions(state.athlete.id, day()),
+    getInProgressWorkouts(state.athlete.id),
+  ]);
+  const todaySessionIds = new Set(assignments.map((assignment) => assignment.session?.id).filter(Boolean));
+  const resumable = inProgress.filter((log) => !todaySessionIds.has(log.session_id));
+  const resumeSection = resumable.length
+    ? '<section class="card"><h2>Continue training</h2><p class="subtle">You have an unfinished session.</p>' +
+      resumable.map((log) => '<button class="list-button" data-action="open-workout" data-log="' + esc(log.id) +
+        '"><span><strong>' + esc(log.session_name) + '</strong><br><span class="muted">Started ' + shortDate(log.session_date) +
+        '</span></span><span class="pill">Resume</span></button>').join("") + "</section>"
+    : "";
   const cards = await Promise.all(assignments.map(async (assignment) => {
     const session = assignment.session;
     const log = await getWorkout(state.athlete.id, session.id);
@@ -109,8 +125,10 @@ async function athleteToday() {
       '<p class="subtle">' + esc(session.description || "Your coach has programmed this session for you.") + "</p>" +
       '<div class="split"><span class="pill">' + (session.estimated_duration_minutes ? "Estimated " + session.estimated_duration_minutes + " min" : "Train well") + "</span>" + action + "</div></article>";
   }));
+  const todayBlock = cards.join("") || (resumable.length ? "" : '<article class="card hero"><div class="eyebrow">Today</div><h1>Recovery day</h1><p class="subtle">There is no programmed session assigned to you today.</p></article>');
   shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + "</div><h1>" + dateLabel(day()) + "</h1></section>" +
-    (cards.join("") || '<article class="card hero"><div class="eyebrow">Today</div><h1>Recovery day</h1><p class="subtle">There is no programmed session assigned to you today.</p></article>') +
+    resumeSection +
+    todayBlock +
     '<section class="card tight"><div class="split"><div><h3>Training history</h3><p class="subtle">Review your completed sessions.</p></div><a href="#history">History ›</a></div></section>', false);
 }
 function fields(exercise) {
@@ -186,6 +204,8 @@ async function athleteWorkout(logId) {
   let foot = '<button class="button primary full" data-action="finish-workout" data-log="' + esc(logId) + '">Finish session</button>';
   if (done) foot = '<article class="card hero"><div class="eyebrow">Session complete ✓</div><h1>Great work.</h1><p class="subtle">' + workout.exercises.filter((item) => item.setLogs.length).length + "/" + workout.exercises.length + " exercises recorded" + (workout.log.session_rpe != null ? " · Session RPE " + workout.log.session_rpe : "") + "</p></article>";
   shell(head + workout.exercises.map((item, index) => exerciseCard(item, previous[index], logId, done)).join("") + foot, false);
+  if (done) { try { localStorage.removeItem("cbi-drafts-" + logId); } catch (error) { console.warn(error); } stopRetryLoop(); }
+  else if (outstandingDrafts(logId).length) pushDrafts(logId).catch(() => {});
 }
 async function athleteHistory() {
   if (!state.athlete) return athletePicker();
@@ -237,8 +257,15 @@ async function coachDashboard() {
     db.list("workout_logs", {select:"id,status",session_date:"eq." + day()}, access),
   ]);
   const sessions = results[0], athletes = results[1], logs = results[2], done = logs.filter((log) => log.status === "completed").length;
+  const sessionIds = sessions.map((session) => session.id);
+  // Denominator is athletes actually assigned today, not just athletes who have started —
+  // otherwise a single finished session reads as "1/1" while the rest of the squad hasn't begun.
+  const assignments = sessionIds.length
+    ? await db.list("session_assignments", {select:"athlete_id", session_id:`in.(${sessionIds.join(",")})`}, access)
+    : [];
+  const assigned = new Set(assignments.map((assignment) => assignment.athlete_id)).size;
   shell('<section class="page-head"><div class="eyebrow">Coach dashboard</div><h1>Today</h1><p class="subtle">' + dateLabel(day()) + "</p></section>" +
-    '<div class="grid three"><article class="card tight"><div class="metric">' + sessions.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + logs.length + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
+    '<div class="grid three"><article class="card tight"><div class="metric">' + sessions.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + assigned + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
     '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a></div>' +
     '<section class="card"><h2>Today’s sessions</h2>' + (sessions.map((session) => '<button class="list-button" data-action="review-session" data-session="' + esc(session.id) + '"><span><strong>' + esc(session.name) + '</strong><br><span class="muted">' + (session.estimated_duration_minutes || "—") + " min · " + esc(session.description || "No description") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No sessions scheduled today.</p>') + "</section>", true);
 }
@@ -420,30 +447,69 @@ function saveStatus(message, mode) {
   const target = document.querySelector("#save-status");
   if (target) { target.textContent = message; target.className = "status " + (mode || ""); }
 }
+function currentLogId() {
+  return document.querySelector("[data-set-row]")?.dataset.log || null;
+}
+function outstandingDrafts(logId) {
+  const id = logId || currentLogId();
+  if (!id) return [];
+  return Object.values(draftStore(id)).map((record) => ({ logId: id, record }));
+}
+function startRetryLoop() {
+  if (state.retryTimer) return;
+  state.retryTimer = setInterval(() => { pushDrafts().catch(() => {}); }, RETRY_MS);
+}
+function stopRetryLoop() {
+  if (state.retryTimer) { clearInterval(state.retryTimer); state.retryTimer = null; }
+}
+// Re-sends every unsynced set for a log. Returns true only when nothing is left.
+async function pushDrafts(logId) {
+  const items = outstandingDrafts(logId);
+  if (!items.length) { stopRetryLoop(); return true; }
+  saveStatus("Saving…", "saving");
+  let ok = true;
+  for (const item of items) {
+    try {
+      await saveSet(item.record);
+      draftRemove(item.logId, item.record, item.record);
+    } catch (error) { console.error(error); ok = false; }
+  }
+  const cleared = !outstandingDrafts(logId).length;
+  if (ok && cleared) { saveStatus("Saved ✓", "saved"); stopRetryLoop(); }
+  else { saveStatus("Saved on device — will retry", "error"); startRetryLoop(); }
+  return ok && cleared;
+}
 function scheduleSave(row, instant) {
   const record = readSetRow(row), key = record.workout_exercise_id + ":" + record.set_number, logId = row.dataset.log;
   draftPut(logId, record);
   clearTimeout(state.timers.get(key));
   saveStatus("Saving…", "saving");
   const run = () => {
+    state.timers.delete(key);
     const request = saveSet(record).then(() => {
       draftRemove(logId, record, record);
-      saveStatus("Saved ✓", "saved");
+      if (!outstandingDrafts(logId).length) saveStatus("Saved ✓", "saved");
     }).catch((error) => {
       console.error(error);
-      saveStatus("Saved locally — retrying", "error");
+      saveStatus("Saved on device — will retry", "error");
+      startRetryLoop();
     }).finally(() => state.saves.delete(key));
     state.saves.set(key, request);
   };
   if (instant) run();
-  else state.timers.set(key, setTimeout(run, 600));
+  else state.timers.set(key, setTimeout(run, SAVE_DEBOUNCE_MS));
 }
+// Cancels pending debounces, captures current inputs, and pushes everything.
 async function flushSaves() {
+  const logId = currentLogId();
   document.querySelectorAll("[data-set-row]").forEach((row) => {
     const key = row.dataset.exercise + ":" + row.dataset.number;
-    if (state.timers.has(key)) { clearTimeout(state.timers.get(key)); scheduleSave(row, true); }
+    clearTimeout(state.timers.get(key));
+    state.timers.delete(key);
+    draftPut(row.dataset.log, readSetRow(row));
   });
   await Promise.allSettled([...state.saves.values()]);
+  return pushDrafts(logId);
 }
 async function showExerciseHistory(exerciseId) {
   if (!exerciseId) return toast("This custom exercise has no library history yet.");
@@ -547,7 +613,10 @@ async function eventAction(action, element) {
   if (action === "open-workout") return go("workout/" + element.dataset.log);
   if (action === "copy-previous") return copyPrior(element.dataset.exercise);
   if (action === "exercise-history") return showExerciseHistory(element.dataset.libraryExercise);
-  if (action === "finish-workout") { await flushSaves(); return finishModal(element.dataset.log); }
+  if (action === "finish-workout") {
+    if (!await flushSaves()) return toast("Some sets are not saved yet. Reconnect and try again before finishing.");
+    return finishModal(element.dataset.log);
+  }
   if (action === "close-modal") return closeModal();
   if (action === "coach-signout") {
     try { await auth.signOut(coachToken()); } catch (error) { console.warn(error); }
@@ -614,7 +683,7 @@ document.addEventListener("submit", (event) => {
       return go("coach/dashboard");
     }
     if (form.dataset.form === "finish") {
-      await flushSaves();
+      if (!await flushSaves()) { toast("Some sets are not saved yet. Reconnect and try again."); return; }
       const values = new FormData(form);
       await finishWorkout(form.dataset.log, numeric(values.get("rpe")), values.get("notes"));
       closeModal(); toast("Session complete ✓"); return go("workout/" + form.dataset.log);
@@ -674,5 +743,6 @@ async function render() {
 }
 window.addEventListener("hashchange", render);
 window.addEventListener("beforeunload", () => { document.querySelectorAll("[data-set-row]").forEach((row) => draftPut(row.dataset.log, readSetRow(row))); });
+window.addEventListener("online", () => { pushDrafts().catch(() => {}); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch((error) => console.warn("Service worker unavailable", error));
 render();

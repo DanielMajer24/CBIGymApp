@@ -170,6 +170,13 @@ export function getWorkoutHistory(athleteId, token) {
   }, token);
 }
 
+export function getInProgressWorkouts(athleteId, token) {
+  return db.list("workout_logs", {
+    select: "id,session_id,session_name,session_date,status", athlete_id: `eq.${athleteId}`,
+    status: "eq.in_progress", order: "session_date.desc", limit: "20",
+  }, token);
+}
+
 export async function getCoachProfile(accessToken) {
   const user = await auth.user(accessToken);
   const profiles = await db.list("profiles", { select: "id,name,role,active", auth_user_id: `eq.${user.id}`, limit: "1" }, accessToken);
