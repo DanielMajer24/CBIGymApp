@@ -34,7 +34,6 @@ function monthBounds(value) {
 }
 function shiftMonth(value, amount) { const date = monthDate(value); date.setMonth(date.getMonth() + amount); return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0"); }
 function monthLabel(value) { return new Intl.DateTimeFormat("en-AU", { month:"long", year:"numeric" }).format(monthDate(value)); }
-function addDays(value, amount) { const date = new Date(value + "T12:00:00"); date.setDate(date.getDate() + amount); return isoDate(date.getFullYear(), date.getMonth() + 1, date.getDate()); }
 function route() {
   const raw = (location.hash || "#today").slice(1);
   const pair = raw.split("?");
@@ -173,11 +172,15 @@ async function athletePicker(teamId) {
 async function athleteToday() {
   if (!state.athlete) return athleteTeamPicker();
   const access = athleteToken();
-  const [assignments, inProgress, upcoming] = await Promise.all([
+  const month = validMonth(route().params.get("month"));
+  const bounds = monthBounds(month);
+  const [assignments, inProgress, calendarAssignments, calendarLogs] = await Promise.all([
     getAssignedSessions(state.athlete.id, day(), access),
     getInProgressWorkouts(state.athlete.id, access),
-    getAssignedSessionsInRange(state.athlete.id, addDays(day(), 1), addDays(day(), 90), access),
+    getAssignedSessionsInRange(state.athlete.id, bounds.start, bounds.end, access),
+    getWorkoutLogsInRange(state.athlete.id, bounds.start, bounds.end, access),
   ]);
+  const calendar = calendarSessions(calendarAssignments, calendarLogs);
   const todaySessionIds = new Set(assignments.map((assignment) => assignment.session?.id).filter(Boolean));
   const resumable = inProgress.filter((log) => !todaySessionIds.has(log.session_id));
   const resumeSection = resumable.length
@@ -192,22 +195,15 @@ async function athleteToday() {
     let action = '<button class="button primary" data-action="start-workout" data-session="' + esc(session.id) + '">Start session</button>';
     if (log?.status === "completed") action = '<span class="pill lime">Complete</span>';
     if (log?.status === "in_progress") action = '<button class="button primary" data-action="open-workout" data-log="' + esc(log.id) + '">Resume session</button>';
-    return '<article class="card hero"><div class="eyebrow">Today’s session</div><h1>' + esc(session.name) + "</h1>" +
+    return '<article class="card hero"><div class="eyebrow">Today’s session</div><h1><button class="session-title-link" data-action="open-calendar-session" data-session="' + esc(session.id) + '">' + esc(session.name) + '</button></h1>' +
       '<p class="subtle">' + esc(session.description || "Your coach has programmed this session for you.") + "</p>" +
       '<div class="split"><span class="pill">' + (session.estimated_duration_minutes ? "Estimated " + session.estimated_duration_minutes + " min" : "Train well") + "</span>" + action + "</div></article>";
   }));
   const todayBlock = cards.join("") || (resumable.length ? "" : '<article class="card hero"><div class="eyebrow">Today</div><h1>Recovery day</h1><p class="subtle">There is no programmed session assigned to you today.</p></article>');
-  const upcomingBlock = !assignments.length && upcoming.length
-    ? '<section class="card"><div class="split"><div><h2>Coming up</h2><p class="subtle">Your next programmed sessions.</p></div><a href="#profile">Calendar ›</a></div>' + upcoming.slice(0, 3).map((assignment) => {
-      const session = assignment.session;
-      const type = sessionType(session);
-      return '<button class="list-button upcoming-session" data-action="open-calendar-session" data-session="' + esc(session.id) + '"><span><strong>' + esc(session.name) + '</strong><br><span class="muted">' + esc(shortDate(session.session_date)) + (session.estimated_duration_minutes ? " · " + esc(session.estimated_duration_minutes) + " min" : "") + '</span></span><span class="session-type tone-' + type + '">' + esc(toneLabel(type)) + '</span></button>';
-    }).join("") + '</section>'
-    : "";
   shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + "</div><h1>" + dateLabel(day()) + "</h1></section>" +
+    scheduledTrainingsCard(month, calendar, "today") +
     resumeSection +
     todayBlock +
-    upcomingBlock +
     '<section class="card tight"><div class="split"><div><h3>Training history</h3><p class="subtle">Review your completed sessions.</p></div><a href="#history">History ›</a></div></section>', false);
 }
 function fields(exercise) {
@@ -354,6 +350,16 @@ function calendarGrid(month, sessions) {
   }).join("");
   return '<div class="calendar-weekdays" aria-hidden="true">' + ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((name) => '<span>' + name + "</span>").join("") + '</div><div class="calendar-grid" role="grid" aria-label="' + esc(monthLabel(month)) + ' training calendar">' + cells + "</div>";
 }
+function calendarSessions(assignments, logs) {
+  const logsBySession = new Map(logs.filter((log) => log.session_id).map((log) => [log.session_id, log]));
+  const sessions = assignments.map((assignment) => ({ session:assignment.session, log:logsBySession.get(assignment.session.id) || null }));
+  const assignedSessionIds = new Set(sessions.map((item) => item.session.id));
+  logs.filter((log) => !assignedSessionIds.has(log.session_id)).forEach((log) => sessions.push({ session:{ id:log.session_id, name:log.session_name, description:"", session_type:log.session_type, session_date:log.session_date }, log }));
+  return sessions;
+}
+function scheduledTrainingsCard(month, sessions, routeName) {
+  return '<section class="card calendar-card"><div class="calendar-header"><div><div class="eyebrow">' + esc(monthLabel(month)) + '</div><h2>Scheduled trainings</h2><p class="subtle">Tap any workout to view its program or resume it.</p></div><div class="calendar-controls"><button class="button small ghost icon-button" data-action="calendar-prev" data-calendar-route="' + esc(routeName) + '" aria-label="Previous month">←</button><button class="button small ghost icon-button" data-action="calendar-next" data-calendar-route="' + esc(routeName) + '" aria-label="Next month">→</button></div></div><div class="calendar-legend"><span class="legend-item tone-strength">Strength</span><span class="legend-item tone-power">Power</span><span class="legend-item tone-conditioning">Conditioning</span><span class="legend-item tone-recovery">Recovery</span><span class="legend-item tone-court">Court</span></div>' + calendarGrid(month, sessions) + (sessions.length ? "" : '<p class="subtle calendar-empty">No sessions assigned for this month.</p>') + '</section>';
+}
 async function athleteSessionPreview(sessionId) {
   if (!state.athlete) return athleteTeamPicker();
   const access = athleteToken();
@@ -378,11 +384,8 @@ async function athleteProfile() {
     getAssignedSessionsInRange(state.athlete.id, bounds.start, bounds.end, access),
     getWorkoutLogsInRange(state.athlete.id, bounds.start, bounds.end, access),
   ]);
-  const logsBySession = new Map(logs.filter((log) => log.session_id).map((log) => [log.session_id, log]));
-  const sessions = assignments.map((assignment) => ({ session:assignment.session, log:logsBySession.get(assignment.session.id) || null }));
-  const assignedSessionIds = new Set(sessions.map((item) => item.session.id));
-  logs.filter((log) => !assignedSessionIds.has(log.session_id)).forEach((log) => sessions.push({ session:{ id:log.session_id, name:log.session_name, description:"", session_type:log.session_type, session_date:log.session_date }, log }));
-  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(state.athlete.name) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section><section class="card calendar-card"><div class="calendar-header"><div><div class="eyebrow">Training calendar</div><h2>' + esc(monthLabel(month)) + '</h2><p class="subtle">Tap any workout to view its program or resume it.</p></div><div class="calendar-controls"><button class="button small ghost icon-button" data-action="calendar-prev" aria-label="Previous month">←</button><button class="button small ghost icon-button" data-action="calendar-next" aria-label="Next month">→</button></div></div><div class="calendar-legend"><span class="legend-item tone-strength">Strength</span><span class="legend-item tone-power">Power</span><span class="legend-item tone-conditioning">Conditioning</span><span class="legend-item tone-recovery">Recovery</span><span class="legend-item tone-court">Court</span></div>' + calendarGrid(month, sessions) + (sessions.length ? "" : '<p class="subtle calendar-empty">No sessions assigned for this month.</p>') + '</section><article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
+  const sessions = calendarSessions(assignments, logs);
+  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(state.athlete.name) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section>' + scheduledTrainingsCard(month, sessions, "profile") + '<article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
 }
 
 function storedCoachSession() {
@@ -793,7 +796,7 @@ async function eventAction(action, element) {
   if (action === "change-athlete") { localStorage.removeItem(athleteKey); state.athlete = null; return athleteTeamPicker(); }
   if (action === "calendar-prev" || action === "calendar-next") {
     const month = validMonth(route().params.get("month"));
-    return go("profile?month=" + shiftMonth(month, action === "calendar-prev" ? -1 : 1));
+    return go((element.dataset.calendarRoute || "profile") + "?month=" + shiftMonth(month, action === "calendar-prev" ? -1 : 1));
   }
   if (action === "open-calendar-session") {
     if (element.dataset.log) return go("workout/" + element.dataset.log);
