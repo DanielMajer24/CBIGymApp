@@ -8,8 +8,10 @@ For an already deployed CBI High Performance database, run each numbered file in
 migrations/ once, in order. Run 004_add_session_type.sql before its matching
 frontend so session colour types and workout snapshots exist, then run
 005_lock_athlete_access_to_authenticated.sql before releasing the new athlete
-authentication flow. Migration 003_add_u18_marlins_roster.sql replaces the
-seed athlete roster with the U18 Marlins without deleting historical logs.
+authentication flow. Run 006_add_profile_names.sql before releasing the
+first/last-name athlete editor. Migration 003_add_u18_marlins_roster.sql
+replaces the seed athlete roster with the U18 Marlins without deleting
+historical logs.
 
 ## Coach account
 
@@ -17,8 +19,8 @@ seed athlete roster with the U18 Marlins without deleting historical logs.
 2. Copy that user’s UUID.
 3. Run the following in the SQL editor, replacing the placeholders:
 
-    insert into public.profiles (auth_user_id, role, name)
-    values ('AUTH_USER_UUID', 'coach', 'Coach Name');
+    insert into public.profiles (auth_user_id, role, first_name, last_name)
+    values ('AUTH_USER_UUID', 'coach', 'Coach', 'Name');
 
 The application only grants coach screens to an authenticated user linked to
 an active coach profile. Never use a service-role key in the browser.
@@ -63,6 +65,18 @@ session can reach the same shared-squad athlete access. It stops casual direct
 REST access with only the key and makes the normal app flow require the PIN.
 Per-athlete identity and write attribution would require individual athlete
 accounts, which is a separate product decision.
+
+## Athlete names and season rollover
+
+Profiles now have separately stored first and last names, with `name` generated
+as their full-name convenience value. The U18 Marlins migration created its
+existing roster from first names only, so its athletes have blank `last_name`
+values after migration 006. Open each athlete in Coach mode and enter their
+real last name once before relying on picker disambiguation for that squad.
+
+When an athlete moves to a different age group or season, edit their existing
+profile's team membership. Do not create a second profile: their workout
+history remains correctly attached to the original profile.
 
 If the team later needs athlete-level write attribution, introduce individual
 athlete accounts and bind policies to auth.uid().

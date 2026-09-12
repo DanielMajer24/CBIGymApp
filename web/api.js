@@ -106,7 +106,7 @@ export const auth = {
 };
 
 export async function getActiveAthletes(token) {
-  return db.list("profiles", { select: "id,name", role: "eq.athlete", active: "eq.true", order: "name.asc" }, token);
+  return db.list("profiles", { select: "id,first_name,last_name,name", role: "eq.athlete", active: "eq.true", order: "name.asc" }, token);
 }
 
 export async function getAthleteTeams(athleteId, token) {
@@ -218,7 +218,7 @@ export function getInProgressWorkouts(athleteId, token) {
 
 export async function getCoachProfile(accessToken) {
   const user = await auth.user(accessToken);
-  const profiles = await db.list("profiles", { select: "id,name,role,active", auth_user_id: `eq.${user.id}`, limit: "1" }, accessToken);
+  const profiles = await db.list("profiles", { select: "id,first_name,last_name,name,role,active", auth_user_id: `eq.${user.id}`, limit: "1" }, accessToken);
   return { user, profile: profiles[0] || null };
 }
 
