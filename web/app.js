@@ -162,9 +162,9 @@ function clearAthleteAgeGroup() {
 }
 function athleteAccess(ageGroup, message) {
   if (!validAgeGroup(ageGroup)) {
-    shell('<section class="login"><div class="eyebrow">Athlete mode</div><h1>Choose your age group</h1><p class="subtle">Select your age group, enter its four-digit code, then choose your team and profile.</p><div class="stack">' +
+    shell('<section class="login"><div class="eyebrow">CBI High Performance</div><h1>Choose your group</h1><p class="subtle">Athletes select an age group, enter its four-digit code, then choose their team and profile.</p><div class="stack">' +
       athleteAgeGroups.map((group) => '<button class="list-button" data-action="choose-age-group" data-age-group="' + group + '"><strong>' + group + '</strong><span>›</span></button>').join("") +
-      '</div><p class="right"><a href="#coach/login">Coach login</a></p></section>', false);
+      '<a class="list-button" href="#coach/login"><strong>Coaches</strong><span>›</span></a></div></section>', false);
     return;
   }
   shell('<section class="login card"><div class="eyebrow">' + esc(ageGroup) + ' athlete mode</div><h1>Enter ' + esc(ageGroup) + ' code</h1><p class="subtle">Ask your coach for this age group’s four-digit code.</p>' +
