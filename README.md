@@ -39,10 +39,12 @@ authentication, and the browser directly calls a constrained public API.
 
 ### Athlete mode
 
-- One shared, coach-managed four-digit entry code before athlete selection;
-  it is remembered per device and acts as a simple access deterrent.
-- Team-first athlete picker that shows only active athletes in the selected
-  squad, with the selected athlete remembered in browser local storage.
+- Coach-managed four-digit codes for U12, U14, U16, and U18. Athletes select
+  their age group before entering its code; it is remembered per device and
+  acts as a simple access deterrent.
+- Age-group-first athlete picker that shows only active teams and athletes in
+  the selected group, with the selected athlete remembered in browser local
+  storage.
 - Today, History, and Profile navigation designed for phone screens.
 - Start or resume prevents duplicate athlete/session logs.
 - Fast numeric set cards with inputs appropriate to weight/reps, reps, time,
@@ -154,18 +156,19 @@ Review provider terms and limits before relying on them long-term:
 ## Security notes
 
 Coach administration is protected by Supabase Auth plus RLS. No coach password
-or PIN is embedded in frontend code.
+or age-group code is embedded in frontend code.
 
-Athlete mode can use one shared four-digit entry code. It is verified and
-stored only by Supabase functions, never embedded in browser code. It is a
-casual access deterrent, not private athlete authentication.
+Athlete mode uses a separate four-digit entry code for each age group. Codes
+are verified and stored only by Supabase functions, never embedded in browser
+code. They are a casual access deterrent, not private athlete authentication.
 
-Athletes intentionally have no private accounts. RLS allows anonymous users to
-read active roster/programme data and write only workout set data for an
-in-progress assigned session. Because there is no athlete identity, a member
-of the trusted squad could technically submit a set for a different public
-profile; this is the unavoidable trade-off for passwordless athlete mode. They
-cannot change athletes, teams, exercises, templates, or programming.
+Athletes intentionally have no private accounts. After a valid age-group code,
+RLS allows an anonymous Auth session to read active roster/programme data and
+write only workout set data for an in-progress assigned session. Because there
+is no athlete identity, a member of the trusted squad could technically submit
+a set for a different public profile; this is the unavoidable trade-off for
+passwordless athlete mode. They cannot change athletes, teams, exercises,
+templates, or programming.
 
 The old local Streamlit secrets file contained a real Supabase key during the
 audit. It is ignored by this repository, but rotate that project key in
@@ -187,7 +190,8 @@ supabase/seed.sql provides:
 
 Coach:
 
-1. Create an athlete and team, assign the athlete to the team.
+1. Create an age-group team, assign the athlete to the team, and set that
+   group’s entry code from Dashboard → Athlete entry codes.
 2. Create an exercise.
 3. Build a session, assign a team and/or individual athlete, and save. Put
    paired exercises in the same Superset group to prescribe them together.
@@ -195,7 +199,8 @@ Coach:
 
 Athlete:
 
-1. Change athlete and select an assigned profile.
+1. Select the athlete’s age group, enter its code, then select an assigned
+   team and profile.
 2. Start the session, enter set values, wait for Saved, then refresh.
 3. Confirm the same workout resumes with the entered values.
 4. Complete it with optional RPE and notes, then review History and exercise

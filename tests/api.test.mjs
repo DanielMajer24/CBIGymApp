@@ -26,6 +26,20 @@ test("active athlete queries include structured names", async () => {
   assert.match(received, /active=eq\.true/);
 });
 
+test("athlete team lookups include each team's age group", async () => {
+  let received;
+  global.fetch = async (url) => {
+    received = String(url);
+    return new Response(JSON.stringify([]), {status:200,headers:{"Content-Type":"application/json"}});
+  };
+
+  await api.getAthleteTeams("athlete-1", "athlete-access-token");
+
+  assert.match(received, /athlete_teams\?/);
+  assert.match(received, /teams%28id%2Cname%2Cage_group%29/);
+  assert.match(received, /athlete_id=eq\.athlete-1/);
+});
+
 test("team picker only adds a last initial for duplicate first names", () => {
   const athletes = [
     {id:"ben-t",first_name:"Ben",last_name:"Taylor"},
@@ -77,11 +91,11 @@ test("athlete entry code is verified through a server RPC", async () => {
     return new Response("true", {status:200,headers:{"Content-Type":"application/json"}});
   };
 
-  const allowed = await api.verifyAthleteEntryPin("2468");
+  const allowed = await api.verifyAthleteEntryPin("U18", "2468");
 
   assert.equal(allowed, true);
   assert.match(received.url, /rest\/v1\/rpc\/verify_athlete_entry_pin$/);
-  assert.deepEqual(JSON.parse(received.options.body), {p_pin:"2468"});
+  assert.deepEqual(JSON.parse(received.options.body), {p_age_group:"U18",p_pin:"2468"});
 });
 
 test("anonymous athlete sign-in creates a token-bearing Auth session", async () => {
@@ -106,11 +120,11 @@ test("only a coach session can set the athlete entry code", async () => {
     return new Response("null", {status:200,headers:{"Content-Type":"application/json"}});
   };
 
-  await api.setAthleteEntryPin("2468", "coach-access-token");
+  await api.setAthleteEntryPin("U16", "2468", "coach-access-token");
 
   assert.match(received.url, /rest\/v1\/rpc\/set_athlete_entry_pin$/);
   assert.equal(received.options.headers.Authorization, "Bearer coach-access-token");
-  assert.deepEqual(JSON.parse(received.options.body), {p_pin:"2468"});
+  assert.deepEqual(JSON.parse(received.options.body), {p_age_group:"U16",p_pin:"2468"});
 });
 
 test("today assignments normalize embedded relations and use the athlete token", async () => {

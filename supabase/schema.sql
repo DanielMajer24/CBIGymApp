@@ -33,7 +33,9 @@ create table public.app_settings (
 
 create table public.teams (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique,
+  name text not null,
+  age_group text not null check (age_group in ('U12', 'U14', 'U16', 'U18')),
+  unique (age_group, name),
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -228,26 +230,27 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
--- A shared athlete code is a simple access deterrent, not an athlete identity.
+-- An age-group code is a simple access deterrent, not an athlete identity.
 -- The clear-text value never leaves these functions or appears in browser code.
-create or replace function public.verify_athlete_entry_pin(p_pin text) returns boolean
+create or replace function public.verify_athlete_entry_pin(p_age_group text, p_pin text) returns boolean
 language plpgsql security definer set search_path = public, extensions as $$
 declare stored_hash text;
 begin
-  if p_pin is null or p_pin !~ '^[0-9]{4}$' then return false; end if;
+  if p_age_group is null or p_age_group not in ('U12', 'U14', 'U16', 'U18') or p_pin is null or p_pin !~ '^[0-9]{4}$' then return false; end if;
   select setting_value into stored_hash
-  from public.app_settings where setting_key = 'athlete_entry_pin_hash';
+  from public.app_settings where setting_key = 'athlete_entry_pin_hash_' || lower(p_age_group);
   return stored_hash is not null and crypt(p_pin, stored_hash) = stored_hash;
 end;
 $$;
 
-create or replace function public.set_athlete_entry_pin(p_pin text) returns void
+create or replace function public.set_athlete_entry_pin(p_age_group text, p_pin text) returns void
 language plpgsql security definer set search_path = public, extensions as $$
 begin
   if not public.is_coach() then raise exception 'Coach access required' using errcode = '42501'; end if;
+  if p_age_group is null or p_age_group not in ('U12', 'U14', 'U16', 'U18') then raise exception 'Choose a valid age group'; end if;
   if p_pin is null or p_pin !~ '^[0-9]{4}$' then raise exception 'Entry code must be exactly four digits'; end if;
   insert into public.app_settings (setting_key, setting_value)
-  values ('athlete_entry_pin_hash', crypt(p_pin, gen_salt('bf', 10)))
+  values ('athlete_entry_pin_hash_' || lower(p_age_group), crypt(p_pin, gen_salt('bf', 10)))
   on conflict (setting_key) do update set setting_value = excluded.setting_value, updated_at = now();
 end;
 $$;
@@ -356,10 +359,10 @@ grant execute on function public.start_or_resume_workout(uuid, uuid) to authenti
 grant execute on function public.finish_workout(uuid, numeric, text) to authenticated;
 grant execute on function public.last_exercise_sets(uuid, uuid, uuid) to authenticated;
 grant execute on function public.exercise_history(uuid, uuid) to authenticated;
-revoke all on function public.set_athlete_entry_pin(text) from public;
-revoke all on function public.verify_athlete_entry_pin(text) from public;
-grant execute on function public.verify_athlete_entry_pin(text) to anon, authenticated;
-grant execute on function public.set_athlete_entry_pin(text) to authenticated;
+revoke all on function public.set_athlete_entry_pin(text, text) from public;
+revoke all on function public.verify_athlete_entry_pin(text, text) from public;
+grant execute on function public.verify_athlete_entry_pin(text, text) to anon, authenticated;
+grant execute on function public.set_athlete_entry_pin(text, text) to authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.app_settings enable row level security;

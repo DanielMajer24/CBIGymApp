@@ -10,8 +10,10 @@ import { athleteFirstName, athleteFullName, athletePickerLabel } from "./names.j
 const root = document.querySelector("#app");
 const athleteKey = "cbi-athlete-id";
 const athleteSessionKey = "cbi-athlete-auth-session";
+const athleteAgeGroupKey = "cbi-athlete-age-group";
 const coachKey = "cbi-coach-session";
-const state = { athlete: null, athleteTeams: [], athleteSession: null, coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map(), retryTimer: null };
+const athleteAgeGroups = ["U12", "U14", "U16", "U18"];
+const state = { athlete: null, athleteTeams: [], athleteAgeGroup: null, athleteSession: null, coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map(), retryTimer: null };
 const SAVE_DEBOUNCE_MS = 600;
 const RETRY_MS = 12000;
 
@@ -48,6 +50,8 @@ function coachToken() { return state.coachSession?.access_token; }
 function athleteToken() { return state.athleteSession?.access_token; }
 function numeric(value) { return value === "" || value === null || value === undefined ? null : Number(value); }
 function html(parts) { return parts.join(""); }
+function validAgeGroup(value) { return athleteAgeGroups.includes(value); }
+function teamLabel(team) { return (team?.age_group ? team.age_group + " · " : "") + (team?.name || "Team"); }
 function toast(message) {
   const old = document.querySelector(".toast");
   if (old) old.remove();
@@ -103,6 +107,11 @@ function supersetOptions(selected) {
   const groups = ["", "A", "B", "C", "D", "E", "F"];
   return groups.map((group) => '<option value="' + group + '"' + (group === (selected || "") ? " selected" : "") + ">" + (group ? "Superset " + group : "No superset") + "</option>").join("");
 }
+function ageGroupOptions(selected, includePlaceholder = false) {
+  const options = athleteAgeGroups.map((group) => '<option value="' + group + '"' + (group === selected ? " selected" : "") + ">" + group + "</option>");
+  if (includePlaceholder) options.unshift('<option value=""' + (!selected ? " selected" : "") + '>Choose age group</option>');
+  return options.join("");
+}
 
 async function restoreAthlete() {
   const athleteId = localStorage.getItem(athleteKey);
@@ -111,6 +120,11 @@ async function restoreAthlete() {
   state.athlete = athletes.find((athlete) => athlete.id === athleteId) || null;
   if (!state.athlete) { localStorage.removeItem(athleteKey); return; }
   state.athleteTeams = await getAthleteTeams(athleteId, athleteToken());
+  if (!state.athleteTeams.some((entry) => entry.teams?.age_group === state.athleteAgeGroup)) {
+    localStorage.removeItem(athleteKey);
+    state.athlete = null;
+    state.athleteTeams = [];
+  }
 }
 function storedAthleteSession() {
   try { return JSON.parse(localStorage.getItem(athleteSessionKey) || "null"); } catch { return null; }
@@ -120,6 +134,9 @@ function saveAthleteSession(session) {
   localStorage.setItem(athleteSessionKey, JSON.stringify(session));
 }
 async function checkAthleteSession() {
+  const ageGroup = localStorage.getItem(athleteAgeGroupKey);
+  state.athleteAgeGroup = validAgeGroup(ageGroup) ? ageGroup : null;
+  if (!state.athleteAgeGroup) return false;
   state.athleteSession = storedAthleteSession();
   if (!state.athleteSession) return false;
   try {
@@ -134,15 +151,31 @@ async function checkAthleteSession() {
     return false;
   }
 }
-function athleteAccess(message) {
-  shell('<section class="login card"><div class="eyebrow">Athlete mode</div><h1>Enter team code</h1><p class="subtle">Ask your coach for the four-digit code, then choose your athlete profile.</p>' +
+function clearAthleteAgeGroup() {
+  localStorage.removeItem(athleteKey);
+  localStorage.removeItem(athleteAgeGroupKey);
+  localStorage.removeItem(athleteSessionKey);
+  state.athlete = null;
+  state.athleteTeams = [];
+  state.athleteAgeGroup = null;
+  state.athleteSession = null;
+}
+function athleteAccess(ageGroup, message) {
+  if (!validAgeGroup(ageGroup)) {
+    shell('<section class="login"><div class="eyebrow">Athlete mode</div><h1>Choose your age group</h1><p class="subtle">Select your age group, enter its four-digit code, then choose your team and profile.</p><div class="stack">' +
+      athleteAgeGroups.map((group) => '<button class="list-button" data-action="choose-age-group" data-age-group="' + group + '"><strong>' + group + '</strong><span>›</span></button>').join("") +
+      '</div><p class="right"><a href="#coach/login">Coach login</a></p></section>', false);
+    return;
+  }
+  shell('<section class="login card"><div class="eyebrow">' + esc(ageGroup) + ' athlete mode</div><h1>Enter ' + esc(ageGroup) + ' code</h1><p class="subtle">Ask your coach for this age group’s four-digit code.</p>' +
     (message ? '<div class="error-box">' + esc(message) + '</div>' : "") +
-    '<form data-form="athlete-access" class="stack"><label>Team code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" minlength="4" maxlength="4" required aria-label="Four digit team code"></label><button class="button primary full">Continue</button></form></section>', false);
+    '<form data-form="athlete-access" data-age-group="' + esc(ageGroup) + '" class="stack"><label>' + esc(ageGroup) + ' code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" minlength="4" maxlength="4" required aria-label="Four digit ' + esc(ageGroup) + ' code"></label><button class="button primary full">Continue</button></form><button class="button full ghost" data-action="change-age-group">Choose another age group</button></section>', false);
 }
 async function athletePickerData() {
   const access = athleteToken();
+  if (!validAgeGroup(state.athleteAgeGroup)) throw new Error("Choose an age group first.");
   const [teams, athletes, memberships] = await Promise.all([
-    db.list("teams", {select:"id,name",active:"eq.true",order:"name.asc"}, access),
+    db.list("teams", {select:"id,name,age_group",active:"eq.true",age_group:"eq." + state.athleteAgeGroup,order:"name.asc"}, access),
     getActiveAthletes(access),
     db.list("athlete_teams", {select:"athlete_id,team_id"}, access),
   ]);
@@ -151,12 +184,13 @@ async function athletePickerData() {
   return { teams:teams.filter((team) => teamIdsWithAthletes.has(team.id)), athletes, memberships };
 }
 async function athleteTeamPicker() {
+  if (!validAgeGroup(state.athleteAgeGroup)) return athleteAccess();
   const data = await athletePickerData();
-  shell('<section class="login"><div class="eyebrow">Athlete mode</div><h1>Choose your team</h1>' +
+  shell('<section class="login"><div class="eyebrow">' + esc(state.athleteAgeGroup) + ' athlete mode</div><h1>Choose your team</h1>' +
     '<p class="subtle">Choose your squad, then select your athlete profile.</p><div class="stack">' +
     data.teams.map((team) => '<button class="list-button" data-action="select-team" data-team="' + esc(team.id) + '"><strong>' + esc(team.name) + "</strong><span>›</span></button>").join("") +
     "</div>" + (!data.teams.length ? empty("No teams have active athletes yet. A coach can add athletes in Coach mode.") : "") +
-    '<p class="right"><a href="#coach/login">Coach login</a></p></section>', false);
+    '<button class="button full ghost" data-action="change-age-group">Choose another age group</button><p class="right"><a href="#coach/login">Coach login</a></p></section>', false);
 }
 async function athletePicker(teamId) {
   const data = await athletePickerData();
@@ -164,11 +198,11 @@ async function athletePicker(teamId) {
   if (!team) return athleteTeamPicker();
   const athleteIds = new Set(data.memberships.filter((entry) => entry.team_id === team.id).map((entry) => entry.athlete_id));
   const athletes = data.athletes.filter((athlete) => athleteIds.has(athlete.id));
-  shell('<section class="login"><div class="eyebrow">' + esc(team.name) + '</div><h1>Who are you?</h1>' +
+  shell('<section class="login"><div class="eyebrow">' + esc(teamLabel(team)) + '</div><h1>Who are you?</h1>' +
     '<p class="subtle">Choose your profile once. This device will remember it.</p><div class="stack">' +
     athletes.map((athlete) => '<button class="list-button" data-action="select-athlete" data-id="' + esc(athlete.id) + '"><strong>' + esc(athletePickerLabel(athlete, athletes)) + "</strong><span>›</span></button>").join("") +
     "</div>" + (!athletes.length ? empty("No active athletes are assigned to this team yet.") : "") +
-    '<button class="button full ghost" data-action="choose-another-team">Choose another team</button></section>', false);
+    '<button class="button full ghost" data-action="choose-another-team">Choose another team</button><button class="button full ghost" data-action="change-age-group">Choose another age group</button></section>', false);
 }
 async function athleteToday() {
   if (!state.athlete) return athleteTeamPicker();
@@ -386,7 +420,7 @@ async function athleteProfile() {
     getWorkoutLogsInRange(state.athlete.id, bounds.start, bounds.end, access),
   ]);
   const sessions = calendarSessions(assignments, logs);
-  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(athleteFirstName(state.athlete)) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section>' + scheduledTrainingsCard(month, sessions, "profile") + '<article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
+  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(athleteFirstName(state.athlete)) + "</h1><p class=\"subtle\">" + esc((state.athleteAgeGroup ? state.athleteAgeGroup + " · " : "") + (teams.join(" · ") || "No team assignment")) + '</p></section>' + scheduledTrainingsCard(month, sessions, "profile") + '<article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><div class="stack"><button class="button full ghost" data-action="change-athlete">Change athlete</button><button class="button full ghost" data-action="change-age-group">Change age group</button></div></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
 }
 
 function storedCoachSession() {
@@ -437,11 +471,12 @@ async function coachDashboard() {
   shell('<section class="page-head"><div class="eyebrow">Coach dashboard</div><h1>Today</h1><p class="subtle">' + dateLabel(day()) + "</p></section>" +
     '<div class="grid three"><article class="card tight"><div class="metric">' + sessions.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + assigned + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
     '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a></div>' +
-    '<section class="card tight"><div class="split"><div><h2>Athlete entry code</h2><p class="subtle">Set or change the shared four-digit code for athlete mode.</p></div><a class="button small" href="#coach/access-code">Manage</a></div></section>' +
+    '<section class="card tight"><div class="split"><div><h2>Athlete entry codes</h2><p class="subtle">Set a separate four-digit code for U12, U14, U16, and U18 athlete mode.</p></div><a class="button small" href="#coach/access-codes">Manage</a></div></section>' +
     '<section class="card"><h2>Today’s sessions</h2>' + (sessions.map((session) => '<button class="list-button" data-action="review-session" data-session="' + esc(session.id) + '"><span><strong>' + esc(session.name) + '</strong><br><span class="muted">' + (session.estimated_duration_minutes || "—") + " min · " + esc(session.description || "No description") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No sessions scheduled today.</p>') + "</section>", true);
 }
-function coachAccessCode() {
-  shell('<section class="page-head"><div class="eyebrow">Athlete mode</div><h1>Entry code</h1><p class="subtle">Use one shared four-digit code. It is not displayed or stored in the browser.</p></section><section class="card"><form data-form="athlete-access-code" class="stack"><label>New four-digit code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><label>Confirm code<input class="pin-input" name="confirm_pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><button class="button primary full">Save entry code</button></form></section>', true);
+function coachAccessCodes() {
+  const cards = athleteAgeGroups.map((ageGroup) => '<section class="card"><div class="split"><div><div class="eyebrow">' + ageGroup + '</div><h2>' + ageGroup + ' athlete code</h2></div><span class="pill">Four digits</span></div><form data-form="athlete-access-code" data-age-group="' + ageGroup + '" class="stack"><label>New ' + ageGroup + ' code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><label>Confirm code<input class="pin-input" name="confirm_pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><button class="button primary full">Save ' + ageGroup + ' code</button></form></section>').join("");
+  shell('<section class="page-head"><div class="eyebrow">Athlete mode</div><h1>Age group codes</h1><p class="subtle">Each age group has its own code. Codes are not displayed or stored in the browser.</p></section>' + cards, true);
 }
 async function coachSessions() {
   const sessions = await db.list("programmed_sessions", {select:"*",order:"session_date.desc",limit:"100"}, coachToken());
@@ -523,7 +558,7 @@ function builder() {
   const isSession = b.kind === "session";
   const selectedSessionType = sessionTypes.includes(b.sessionType) ? b.sessionType : inferredSessionType(b);
   const people = b.athletes.map((athlete) => '<option value="' + esc(athlete.id) + '"' + (b.assignmentIds.includes(athlete.id) ? " selected" : "") + ">" + esc(athleteFullName(athlete)) + "</option>").join("");
-  const teams = '<option value="">No team</option>' + b.teams.map((team) => '<option value="' + esc(team.id) + '"' + (b.teamId === team.id ? " selected" : "") + ">" + esc(team.name) + "</option>").join("");
+  const teams = '<option value="">No team</option>' + b.teams.map((team) => '<option value="' + esc(team.id) + '"' + (b.teamId === team.id ? " selected" : "") + ">" + esc(teamLabel(team)) + "</option>").join("");
   shell('<section class="page-head"><div class="eyebrow">' + (b.id ? "Edit" : "Create") + " " + b.kind + '</div><h1>' + (isSession ? "Program session" : "Save template") + '</h1><p class="subtle">Fields stay optional so programming remains fast.</p></section><form data-form="builder" class="stack">' +
     '<section class="card"><div class="grid two">' + (isSession ? '<label>Date<input name="date" type="date" value="' + esc(b.date) + '"></label>' : "") + '<label>Name<input data-builder-name name="name" required value="' + esc(b.name) + '"></label><label>Session type<select name="session_type" data-session-type data-manual="' + (b.sessionTypeManual ? "true" : "false") + '">' + sessionTypeOptions(selectedSessionType) + '</select></label>' + (isSession ? '<label>Estimated minutes<input name="duration" type="number" min="1" value="' + esc(b.duration) + '"></label>' : "") + '</div><label>Description<textarea data-builder-description name="description">' + esc(b.description) + '</textarea></label><p class="subtle builder-colour-hint">This saved type controls the athlete calendar colour. The suggested type updates from the name until you choose one.</p></section>' +
     '<section><div class="split"><h2>Exercises</h2><button type="button" class="button small" data-action="new-exercise">+ New exercise</button></div>' + b.entries.map((entry,index) => builderInputs(entry,index,b.exercises)).join("") + '<button type="button" class="button full ghost" data-action="add-entry">+ Add exercise</button></section>' +
@@ -539,28 +574,28 @@ async function coachAthletes() {
   const access = coachToken();
   const results = await Promise.all([
     getActiveAthletes(access),
-    db.list("teams", {select:"id,name,active",active:"eq.true",order:"name.asc"}, access),
+    db.list("teams", {select:"id,name,age_group,active",active:"eq.true",order:"age_group.asc,name.asc"}, access),
   ]);
   const athletes = results[0], teams = results[1];
   shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Squad</div><h1>Athletes</h1></div><div class="toolbar"><button class="button" data-action="new-team">+ Team</button><a class="button primary" href="#coach/athlete/new">+ Athlete</a></div></div><p class="subtle">' + results[0].length + " active athlete" + (results[0].length === 1 ? "" : "s") + " shown in the athlete selector.</p></section>" +
     athletes.map((athlete) => '<button class="list-button" data-action="edit-athlete" data-athlete="' + esc(athlete.id) + '"><span><strong>' + esc(athleteFullName(athlete)) + '</strong><br><span class="muted">' + (athlete.active ? "Active" : "Inactive") + '</span></span><span>›</span></button>').join("") +
     '<section class="card"><div class="split"><div><h2>Teams</h2><p class="subtle">Manage active and removed squads.</p></div><button class="button small ghost" data-action="new-team">+ Team</button></div>' +
-    (teams.map((team) => '<button class="list-button" data-action="edit-team" data-team="' + esc(team.id) + '"><span><strong>' + esc(team.name) + '</strong><br><span class="muted">' + (team.active ? "Active" : "Removed") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No teams yet.</p>') + '</section>', true);
+    (teams.map((team) => '<button class="list-button" data-action="edit-team" data-team="' + esc(team.id) + '"><span><strong>' + esc(teamLabel(team)) + '</strong><br><span class="muted">' + (team.active ? "Active" : "Removed") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No teams yet.</p>') + '</section>', true);
 }
 async function athleteEditor(id) {
   const access = coachToken();
   const values = await Promise.all([
     id ? db.single("profiles", {select:"*",id:"eq." + id}, access) : Promise.resolve({first_name:"",last_name:"",name:"",active:true}),
-    db.list("teams", {select:"*",active:"eq.true",order:"name.asc"}, access),
+    db.list("teams", {select:"*",active:"eq.true",order:"age_group.asc,name.asc"}, access),
     id ? db.list("athlete_teams", {select:"team_id",athlete_id:"eq." + id}, access) : Promise.resolve([]),
   ]);
   const athlete = values[0], teams = values[1], assigned = values[2].map((entry) => entry.team_id);
   const fullName = athleteFullName(athlete);
-  shell('<section class="page-head"><div class="eyebrow">' + (id ? "Edit athlete" : "New athlete") + '</div><h1>' + (id ? esc(fullName) : "Add athlete") + '</h1></section><form data-form="athlete" data-athlete="' + esc(id || "") + '" class="stack"><section class="card"><div class="grid two"><label>First name<input name="first_name" required value="' + esc(athlete.first_name || "") + '"></label><label>Last name<input name="last_name" required value="' + esc(athlete.last_name || "") + '"></label></div><p class="notice rollover-note"><strong>Season rollover</strong><br>Moving this athlete to a new season’s team or age group? Edit their team here rather than creating a new profile. Their training history stays attached to this profile.</p><label class="inline"><input type="checkbox" name="active"' + (athlete.active ? " checked" : "") + '> Active in athlete selector</label><label>Teams<select multiple name="teams" size="5">' + teams.map((team) => '<option value="' + esc(team.id) + '"' + (assigned.includes(team.id) ? " selected" : "") + ">" + esc(team.name) + "</option>").join("") + '</select></label></section><button class="button primary full">Save athlete</button>' + (id && athlete.active ? '<button type="button" class="button full ghost" data-action="archive-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(fullName) + '">Archive athlete</button><button type="button" class="button danger full" data-action="delete-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(fullName) + '">Delete permanently</button>' : "") + '</form>' + (id ? '<p class="right"><button class="button ghost" data-action="coach-athlete-history" data-athlete="' + esc(id) + '">View workout history</button></p>' : ""), true);
+  shell('<section class="page-head"><div class="eyebrow">' + (id ? "Edit athlete" : "New athlete") + '</div><h1>' + (id ? esc(fullName) : "Add athlete") + '</h1></section><form data-form="athlete" data-athlete="' + esc(id || "") + '" class="stack"><section class="card"><div class="grid two"><label>First name<input name="first_name" required value="' + esc(athlete.first_name || "") + '"></label><label>Last name<input name="last_name" required value="' + esc(athlete.last_name || "") + '"></label></div><p class="notice rollover-note"><strong>Season rollover</strong><br>Moving this athlete to a new season’s team or age group? Edit their team here rather than creating a new profile. Their training history stays attached to this profile.</p><label class="inline"><input type="checkbox" name="active"' + (athlete.active ? " checked" : "") + '> Active in athlete selector</label><label>Teams<select multiple name="teams" size="5">' + teams.map((team) => '<option value="' + esc(team.id) + '"' + (assigned.includes(team.id) ? " selected" : "") + ">" + esc(teamLabel(team)) + "</option>").join("") + '</select></label></section><button class="button primary full">Save athlete</button>' + (id && athlete.active ? '<button type="button" class="button full ghost" data-action="archive-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(fullName) + '">Archive athlete</button><button type="button" class="button danger full" data-action="delete-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(fullName) + '">Delete permanently</button>' : "") + '</form>' + (id ? '<p class="right"><button class="button ghost" data-action="coach-athlete-history" data-athlete="' + esc(id) + '">View workout history</button></p>' : ""), true);
 }
 async function teamEditor(id) {
-  const team = await db.single("teams", {select:"id,name,active",id:"eq." + id}, coachToken());
-  shell('<section class="page-head"><div class="eyebrow">Team</div><h1>' + esc(team.name) + '</h1><p class="subtle">Archive hides a team while preserving history. Permanent deletion is only available when it has no players or current/future assignments.</p></section><form data-form="team" data-team="' + esc(team.id) + '" class="stack"><section class="card"><label>Name<input name="name" required value="' + esc(team.name) + '"></label><label class="inline"><input type="checkbox" name="active"' + (team.active ? " checked" : "") + '> Active for athlete selection and programming</label></section><button class="button primary full">Save team</button>' + (team.active ? '<button type="button" class="button full ghost" data-action="archive-team" data-team="' + esc(team.id) + '" data-name="' + esc(team.name) + '">Archive team</button><button type="button" class="button danger full" data-action="delete-team" data-team="' + esc(team.id) + '" data-name="' + esc(team.name) + '">Delete permanently</button>' : "") + '</form>', true);
+  const team = await db.single("teams", {select:"id,name,age_group,active",id:"eq." + id}, coachToken());
+  shell('<section class="page-head"><div class="eyebrow">Team</div><h1>' + esc(teamLabel(team)) + '</h1><p class="subtle">Archive hides a team while preserving history. Permanent deletion is only available when it has no players or current/future assignments.</p></section><form data-form="team" data-team="' + esc(team.id) + '" class="stack"><section class="card"><div class="grid two"><label>Name<input name="name" required value="' + esc(team.name) + '"></label><label>Age group<select name="age_group" required>' + ageGroupOptions(team.age_group, true) + '</select></label></div><label class="inline"><input type="checkbox" name="active"' + (team.active ? " checked" : "") + '> Active for athlete selection and programming</label></section><button class="button primary full">Save team</button>' + (team.active ? '<button type="button" class="button full ghost" data-action="archive-team" data-team="' + esc(team.id) + '" data-name="' + esc(teamLabel(team)) + '">Archive team</button><button type="button" class="button danger full" data-action="delete-team" data-team="' + esc(team.id) + '" data-name="' + esc(teamLabel(team)) + '">Delete permanently</button>' : "") + '</form>', true);
 }
 async function coachExercises() {
   const exercises = await db.list("exercises", {select:"*",order:"name.asc"}, coachToken());
@@ -587,7 +622,7 @@ function newExerciseModal() {
   modal('<div class="split"><h2>Create exercise</h2><button class="button small ghost" data-action="close-modal">×</button></div><form data-form="quick-exercise" class="stack"><label>Name<input name="name" required autofocus></label><div class="grid two"><label>Category<select name="category"><option>Other</option><option>Squat</option><option>Hinge</option><option>Push</option><option>Pull</option><option>Single Leg</option><option>Core</option><option>Plyometric</option><option>Speed</option><option>Conditioning</option></select></label><label>Tracking<select name="tracking_type">' + trackingOptions("weight_reps") + '</select></label></div><button class="button primary full">Create and add</button></form>');
 }
 function newTeamModal() {
-  modal('<div class="split"><h2>Create team</h2><button class="button small ghost" data-action="close-modal">×</button></div><form data-form="quick-team" class="stack"><label>Team name<input name="name" required autofocus></label><button class="button primary full">Create team</button></form>');
+  modal('<div class="split"><h2>Create team</h2><button class="button small ghost" data-action="close-modal">×</button></div><form data-form="quick-team" class="stack"><label>Team name<input name="name" required autofocus></label><label>Age group<select name="age_group" required>' + ageGroupOptions("", true) + '</select></label><button class="button primary full">Create team</button></form>');
 }
 async function deleteSessionModal(sessionId, name) {
   const logs = await db.list("workout_logs", {select:"id",session_id:"eq." + sessionId,limit:"1"}, coachToken());
@@ -799,16 +834,17 @@ async function quickExercise(form) {
   builder();
 }
 async function quickTeam(form) {
-  const values = new FormData(form), name = String(values.get("name") || "").trim(), access = coachToken();
+  const values = new FormData(form), name = String(values.get("name") || "").trim(), ageGroup = String(values.get("age_group") || ""), access = coachToken();
   if (!name) throw new Error("Enter a team name.");
-  const existing = await db.list("teams", {select:"id,name,active",name:"eq." + name,limit:"1"}, access);
+  if (!validAgeGroup(ageGroup)) throw new Error("Choose an age group for this team.");
+  const existing = await db.list("teams", {select:"id,name,age_group,active",name:"eq." + name,age_group:"eq." + ageGroup,limit:"1"}, access);
   let created;
   if (existing[0]) {
     if (existing[0].active) throw new Error("A team with that name already exists.");
-    created = await db.update("teams", {id:"eq." + existing[0].id}, {active:true}, access);
+    created = await db.update("teams", {id:"eq." + existing[0].id}, {active:true,age_group:ageGroup}, access);
     toast("Removed team restored");
   } else {
-    created = await db.insert("teams", {name,active:true}, access);
+    created = await db.insert("teams", {name,age_group:ageGroup,active:true}, access);
     toast("Team created");
   }
   if (state.builder && route().path.indexOf("coach/session") === 0) state.builder.teams.push(created[0]);
@@ -817,7 +853,9 @@ async function quickTeam(form) {
 }
 async function saveTeam(form) {
   const values = new FormData(form);
-  await db.update("teams", {id:"eq." + form.dataset.team}, {name:values.get("name"),active:Boolean(values.get("active"))}, coachToken());
+  const ageGroup = String(values.get("age_group") || "");
+  if (!validAgeGroup(ageGroup)) throw new Error("Choose an age group for this team.");
+  await db.update("teams", {id:"eq." + form.dataset.team}, {name:values.get("name"),age_group:ageGroup,active:Boolean(values.get("active"))}, coachToken());
   toast("Team saved");
   go("coach/athletes");
 }
@@ -899,9 +937,11 @@ async function eventAction(action, element) {
     state.athleteTeams = await getAthleteTeams(state.athlete.id, athleteToken());
     return go("today");
   }
+  if (action === "choose-age-group") return athleteAccess(element.dataset.ageGroup);
   if (action === "select-team") return athletePicker(element.dataset.team);
   if (action === "choose-another-team") return athleteTeamPicker();
   if (action === "change-athlete") { localStorage.removeItem(athleteKey); state.athlete = null; return athleteTeamPicker(); }
+  if (action === "change-age-group") { clearAthleteAgeGroup(); return athleteAccess(); }
   if (action === "calendar-prev" || action === "calendar-next") {
     const month = validMonth(route().params.get("month"));
     return go((element.dataset.calendarRoute || "profile") + "?month=" + shiftMonth(month, action === "calendar-prev" ? -1 : 1));
@@ -1001,18 +1041,27 @@ document.addEventListener("submit", (event) => {
     }
     if (form.dataset.form === "athlete-access") {
       const pin = String(new FormData(form).get("pin") || "");
-      const allowed = await verifyAthleteEntryPin(pin);
-      if (!allowed) return athleteAccess("That code is not correct. Try again or ask your coach.");
+      const ageGroup = form.dataset.ageGroup;
+      if (!validAgeGroup(ageGroup)) return athleteAccess();
+      const allowed = await verifyAthleteEntryPin(ageGroup, pin);
+      if (!allowed) return athleteAccess(ageGroup, "That code is not correct. Try again or ask your coach.");
+      localStorage.setItem(athleteAgeGroupKey, ageGroup);
+      localStorage.removeItem(athleteKey);
+      state.athleteAgeGroup = ageGroup;
+      state.athlete = null;
+      state.athleteTeams = [];
       saveAthleteSession(await auth.signInAnonymously());
       return go("today");
     }
     if (form.dataset.form === "athlete-access-code") {
       const values = new FormData(form), pin = String(values.get("pin") || ""), confirm = String(values.get("confirm_pin") || "");
+      const ageGroup = form.dataset.ageGroup;
+      if (!validAgeGroup(ageGroup)) throw new Error("Choose a valid age group.");
       if (!/^[0-9]{4}$/.test(pin)) throw new Error("Enter exactly four digits.");
       if (pin !== confirm) throw new Error("The two codes do not match.");
-      await setAthleteEntryPin(pin, coachToken());
-      toast("Athlete entry code saved");
-      return go("coach/dashboard");
+      await setAthleteEntryPin(ageGroup, pin, coachToken());
+      toast(ageGroup + " athlete code saved");
+      return go("coach/access-codes");
     }
     if (form.dataset.form === "finish") {
       if (!await flushSaves()) { toast("Some sets are not saved yet. Reconnect and try again."); return; }
@@ -1049,7 +1098,7 @@ async function render() {
       }
       if (!await checkCoach()) return coachLogin("Please sign in to access coach tools.");
       if (pieces[1] === "dashboard") return coachDashboard();
-      if (pieces[1] === "access-code") return coachAccessCode();
+      if (pieces[1] === "access-code" || pieces[1] === "access-codes") return coachAccessCodes();
       if (pieces[1] === "sessions") return coachSessions();
       if (pieces[1] === "review") return coachReview(pieces[2]);
       if (pieces[1] === "log") return coachLogDetail(pieces[2]);

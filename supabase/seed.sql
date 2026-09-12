@@ -1,10 +1,10 @@
 -- Development-only data. Run after schema.sql. Dates move with the calendar so
 -- all primary states are immediately testable.
 
-insert into public.teams (id, name) values
-  ('00000000-0000-4000-8000-000000000101', 'Development Squad'),
-  ('00000000-0000-4000-8000-000000000102', 'Rehab Group')
-on conflict (id) do update set name = excluded.name;
+insert into public.teams (id, name, age_group) values
+  ('00000000-0000-4000-8000-000000000101', 'Development Squad', 'U18'),
+  ('00000000-0000-4000-8000-000000000102', 'Rehab Group', 'U18')
+on conflict (id) do update set name = excluded.name, age_group = excluded.age_group;
 
 insert into public.profiles (id, role, first_name, last_name, active) values
   ('00000000-0000-4000-8000-000000000001', 'athlete', 'Daniel', 'Majer', true),
