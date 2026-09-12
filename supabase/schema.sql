@@ -15,7 +15,9 @@ create table public.profiles (
   id uuid primary key default gen_random_uuid(),
   auth_user_id uuid unique references auth.users(id) on delete set null,
   role public.profile_role not null default 'athlete',
-  name text not null check (char_length(trim(name)) > 0),
+  first_name text not null check (char_length(trim(first_name)) > 0),
+  last_name text not null,
+  name text generated always as (trim(first_name || ' ' || last_name)) stored not null,
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

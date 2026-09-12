@@ -5,6 +5,7 @@ import {
   getWorkoutLogsInRange, getInProgressWorkouts, getCoachProfile,
   verifyAthleteEntryPin, setAthleteEntryPin,
 } from "./api.js";
+import { athleteFirstName, athleteFullName, athletePickerLabel } from "./names.js";
 
 const root = document.querySelector("#app");
 const athleteKey = "cbi-athlete-id";
@@ -77,7 +78,7 @@ function shell(content, coach) {
   root.innerHTML = '<main class="shell"><header class="topbar">' +
     '<a class="brand" href="#' + (coach ? "coach/dashboard" : "today") + '"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI High Performance</span></a>' +
     (coach ? '<button class="button small ghost" data-action="coach-signout">Sign out</button>' :
-      (state.athlete ? '<button class="button small ghost" data-action="change-athlete">' + esc(state.athlete.name) + '</button>' : '<a class="button small ghost" href="#coach/login">Coach login</a>')) +
+      (state.athlete ? '<button class="button small ghost" data-action="change-athlete">' + esc(athleteFirstName(state.athlete)) + '</button>' : '<a class="button small ghost" href="#coach/login">Coach login</a>')) +
     "</header>" + (coach ? coachNav() : "") + content + "</main>" + (coach ? "" : athleteNav());
 }
 function loading() { root.innerHTML = '<main class="shell"><header class="topbar"><span class="brand"><img class="brand-logo" src="./assets/cairns-basketball-logo.png" alt="Cairns Basketball"><span>CBI High Performance</span></span></header><div class="empty">Loading training…</div></main>'; }
@@ -165,7 +166,7 @@ async function athletePicker(teamId) {
   const athletes = data.athletes.filter((athlete) => athleteIds.has(athlete.id));
   shell('<section class="login"><div class="eyebrow">' + esc(team.name) + '</div><h1>Who are you?</h1>' +
     '<p class="subtle">Choose your profile once. This device will remember it.</p><div class="stack">' +
-    athletes.map((athlete) => '<button class="list-button" data-action="select-athlete" data-id="' + esc(athlete.id) + '"><strong>' + esc(athlete.name) + "</strong><span>›</span></button>").join("") +
+    athletes.map((athlete) => '<button class="list-button" data-action="select-athlete" data-id="' + esc(athlete.id) + '"><strong>' + esc(athletePickerLabel(athlete, athletes)) + "</strong><span>›</span></button>").join("") +
     "</div>" + (!athletes.length ? empty("No active athletes are assigned to this team yet.") : "") +
     '<button class="button full ghost" data-action="choose-another-team">Choose another team</button></section>', false);
 }
@@ -200,7 +201,7 @@ async function athleteToday() {
       '<div class="split"><span class="pill">' + (session.estimated_duration_minutes ? "Estimated " + session.estimated_duration_minutes + " min" : "Train well") + "</span>" + action + "</div></article>";
   }));
   const todayBlock = cards.join("") || (resumable.length ? "" : '<article class="card hero"><div class="eyebrow">Today</div><h1>Recovery day</h1><p class="subtle">There is no programmed session assigned to you today.</p></article>');
-  shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + "</div><h1>" + dateLabel(day()) + "</h1></section>" +
+  shell('<section class="page-head"><div class="eyebrow">' + esc(athleteFirstName(state.athlete)) + "</div><h1>" + dateLabel(day()) + "</h1></section>" +
     todayBlock +
     resumeSection +
     scheduledTrainingsCard(month, calendar, "today") +
@@ -302,7 +303,7 @@ async function athleteWorkout(logId) {
 async function athleteHistory() {
   if (!state.athlete) return athleteTeamPicker();
   const sessions = await getWorkoutHistory(state.athlete.id, athleteToken());
-  shell('<section class="page-head"><div class="eyebrow">' + esc(state.athlete.name) + '</div><h1>Training history</h1><p class="subtle">Completed sessions are preserved exactly as performed.</p></section>' +
+  shell('<section class="page-head"><div class="eyebrow">' + esc(athleteFirstName(state.athlete)) + '</div><h1>Training history</h1><p class="subtle">Completed sessions are preserved exactly as performed.</p></section>' +
     (sessions.map((log) => '<button class="list-button" data-action="open-workout" data-log="' + esc(log.id) + '"><span><strong>' + esc(log.session_name) + "</strong><br><span class=\"muted\">" + shortDate(log.session_date) + (log.session_rpe != null ? " · RPE " + log.session_rpe : "") + '</span></span><span class="pill lime">View</span></button>').join("") || empty("Finish a session and it will appear here.")), false);
 }
 const sessionTypes = ["strength", "power", "conditioning", "recovery", "court"];
@@ -385,7 +386,7 @@ async function athleteProfile() {
     getWorkoutLogsInRange(state.athlete.id, bounds.start, bounds.end, access),
   ]);
   const sessions = calendarSessions(assignments, logs);
-  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(state.athlete.name) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section>' + scheduledTrainingsCard(month, sessions, "profile") + '<article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
+  shell('<section class="page-head"><div class="eyebrow">Athlete profile</div><h1>' + esc(athleteFirstName(state.athlete)) + "</h1><p class=\"subtle\">" + esc(teams.join(" · ") || "No team assignment") + '</p></section>' + scheduledTrainingsCard(month, sessions, "profile") + '<article class="card"><h2>This device</h2><p class="subtle">Your athlete profile is remembered on this device. Profiles are deliberately not private accounts.</p><button class="button full ghost" data-action="change-athlete">Change athlete</button></article><p class="right"><a href="#coach/login">Coach mode</a></p>', false);
 }
 
 function storedCoachSession() {
@@ -451,7 +452,7 @@ async function coachReview(sessionId) {
   const access = coachToken();
   const session = await db.single("programmed_sessions", {select:"*",id:"eq." + sessionId}, access);
   const data = await Promise.all([
-    db.list("session_assignments", {select:"athlete_id,profiles!session_assignments_athlete_id_fkey(id,name)",session_id:"eq." + sessionId}, access),
+    db.list("session_assignments", {select:"athlete_id,profiles!session_assignments_athlete_id_fkey(id,first_name,last_name,name)",session_id:"eq." + sessionId}, access),
     db.list("workout_logs", {select:"id,athlete_id,status,session_rpe,completed_at",session_id:"eq." + sessionId}, access),
     db.list("session_exercises", {select:"*",session_id:"eq." + sessionId,order:"position.asc"}, access),
   ]);
@@ -464,12 +465,14 @@ async function coachReview(sessionId) {
       const profile = Array.isArray(assignment.profiles) ? assignment.profiles[0] : assignment.profiles;
       const log = logs.find((entry) => entry.athlete_id === assignment.athlete_id);
       const status = log?.status || "not_started";
-      return '<button class="list-button" ' + (log ? 'data-action="review-log" data-log="' + esc(log.id) + '"' : "disabled") + '><span><strong>' + esc(profile?.name || "Athlete") + '</strong><br><span class="' + status.replace("_","-") + '">' + status.replace("_"," ") + '</span></span>' + (log ? statusPill(status) : statusPill("not_started")) + "</button>";
+      return '<button class="list-button" ' + (log ? 'data-action="review-log" data-log="' + esc(log.id) + '"' : "disabled") + '><span><strong>' + esc(athleteFullName(profile)) + '</strong><br><span class="' + status.replace("_","-") + '">' + status.replace("_"," ") + '</span></span>' + (log ? statusPill(status) : statusPill("not_started")) + "</button>";
     }).join("") + "</section>", true);
 }
 async function coachLogDetail(logId) {
-  const workout = await getWorkoutDetail(logId, coachToken());
-  shell('<section class="page-head"><div class="eyebrow">Athlete result · ' + shortDate(workout.log.session_date) + '</div><h1>' + esc(workout.log.session_name) + '</h1><p class="subtle">' + statusPill(workout.log.status) + (workout.log.session_rpe != null ? " Session RPE " + workout.log.session_rpe : "") + "</p></section>" +
+  const access = coachToken();
+  const workout = await getWorkoutDetail(logId, access);
+  const athlete = await db.single("profiles", {select:"id,first_name,last_name,name",id:"eq." + workout.log.athlete_id}, access);
+  shell('<section class="page-head"><div class="eyebrow">' + esc(athleteFullName(athlete)) + ' · ' + shortDate(workout.log.session_date) + '</div><h1>' + esc(workout.log.session_name) + '</h1><p class="subtle">' + statusPill(workout.log.status) + (workout.log.session_rpe != null ? " Session RPE " + workout.log.session_rpe : "") + "</p></section>" +
     workout.exercises.map((exercise) => '<article class="card session-log"><div class="split"><h2>' + esc(exercise.exercise_name) + '</h2>' + supersetMark(exercise.superset_group) + '</div><div class="prescription">' + plan(exercise) + "</div>" +
       Array.from({length:exercise.sets}, (_, index) => { const set = exercise.setLogs.find((row) => row.set_number === index + 1); return '<div class="previous-line"><span>Set ' + (index + 1) + "</span><strong>" + (set ? formattedSet(set, exercise.tracking_type) : "—") + "</strong></div>"; }).join("") + "</article>").join("") +
     (workout.log.athlete_notes ? '<article class="card"><h3>Athlete notes</h3><p>' + esc(workout.log.athlete_notes) + "</p></article>" : ""), true);
@@ -519,7 +522,7 @@ function builder() {
   const b = state.builder;
   const isSession = b.kind === "session";
   const selectedSessionType = sessionTypes.includes(b.sessionType) ? b.sessionType : inferredSessionType(b);
-  const people = b.athletes.map((athlete) => '<option value="' + esc(athlete.id) + '"' + (b.assignmentIds.includes(athlete.id) ? " selected" : "") + ">" + esc(athlete.name) + "</option>").join("");
+  const people = b.athletes.map((athlete) => '<option value="' + esc(athlete.id) + '"' + (b.assignmentIds.includes(athlete.id) ? " selected" : "") + ">" + esc(athleteFullName(athlete)) + "</option>").join("");
   const teams = '<option value="">No team</option>' + b.teams.map((team) => '<option value="' + esc(team.id) + '"' + (b.teamId === team.id ? " selected" : "") + ">" + esc(team.name) + "</option>").join("");
   shell('<section class="page-head"><div class="eyebrow">' + (b.id ? "Edit" : "Create") + " " + b.kind + '</div><h1>' + (isSession ? "Program session" : "Save template") + '</h1><p class="subtle">Fields stay optional so programming remains fast.</p></section><form data-form="builder" class="stack">' +
     '<section class="card"><div class="grid two">' + (isSession ? '<label>Date<input name="date" type="date" value="' + esc(b.date) + '"></label>' : "") + '<label>Name<input data-builder-name name="name" required value="' + esc(b.name) + '"></label><label>Session type<select name="session_type" data-session-type data-manual="' + (b.sessionTypeManual ? "true" : "false") + '">' + sessionTypeOptions(selectedSessionType) + '</select></label>' + (isSession ? '<label>Estimated minutes<input name="duration" type="number" min="1" value="' + esc(b.duration) + '"></label>' : "") + '</div><label>Description<textarea data-builder-description name="description">' + esc(b.description) + '</textarea></label><p class="subtle builder-colour-hint">This saved type controls the athlete calendar colour. The suggested type updates from the name until you choose one.</p></section>' +
@@ -540,19 +543,20 @@ async function coachAthletes() {
   ]);
   const athletes = results[0], teams = results[1];
   shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Squad</div><h1>Athletes</h1></div><div class="toolbar"><button class="button" data-action="new-team">+ Team</button><a class="button primary" href="#coach/athlete/new">+ Athlete</a></div></div><p class="subtle">' + results[0].length + " active athlete" + (results[0].length === 1 ? "" : "s") + " shown in the athlete selector.</p></section>" +
-    athletes.map((athlete) => '<button class="list-button" data-action="edit-athlete" data-athlete="' + esc(athlete.id) + '"><span><strong>' + esc(athlete.name) + '</strong><br><span class="muted">' + (athlete.active ? "Active" : "Inactive") + '</span></span><span>›</span></button>').join("") +
+    athletes.map((athlete) => '<button class="list-button" data-action="edit-athlete" data-athlete="' + esc(athlete.id) + '"><span><strong>' + esc(athleteFullName(athlete)) + '</strong><br><span class="muted">' + (athlete.active ? "Active" : "Inactive") + '</span></span><span>›</span></button>').join("") +
     '<section class="card"><div class="split"><div><h2>Teams</h2><p class="subtle">Manage active and removed squads.</p></div><button class="button small ghost" data-action="new-team">+ Team</button></div>' +
     (teams.map((team) => '<button class="list-button" data-action="edit-team" data-team="' + esc(team.id) + '"><span><strong>' + esc(team.name) + '</strong><br><span class="muted">' + (team.active ? "Active" : "Removed") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No teams yet.</p>') + '</section>', true);
 }
 async function athleteEditor(id) {
   const access = coachToken();
   const values = await Promise.all([
-    id ? db.single("profiles", {select:"*",id:"eq." + id}, access) : Promise.resolve({name:"",active:true}),
+    id ? db.single("profiles", {select:"*",id:"eq." + id}, access) : Promise.resolve({first_name:"",last_name:"",name:"",active:true}),
     db.list("teams", {select:"*",active:"eq.true",order:"name.asc"}, access),
     id ? db.list("athlete_teams", {select:"team_id",athlete_id:"eq." + id}, access) : Promise.resolve([]),
   ]);
   const athlete = values[0], teams = values[1], assigned = values[2].map((entry) => entry.team_id);
-  shell('<section class="page-head"><div class="eyebrow">' + (id ? "Edit athlete" : "New athlete") + '</div><h1>' + (id ? esc(athlete.name) : "Add athlete") + '</h1></section><form data-form="athlete" data-athlete="' + esc(id || "") + '" class="stack"><section class="card"><label>Name<input name="name" required value="' + esc(athlete.name) + '"></label><label class="inline"><input type="checkbox" name="active"' + (athlete.active ? " checked" : "") + '> Active in athlete selector</label><label>Teams<select multiple name="teams" size="5">' + teams.map((team) => '<option value="' + esc(team.id) + '"' + (assigned.includes(team.id) ? " selected" : "") + ">" + esc(team.name) + "</option>").join("") + '</select></label></section><button class="button primary full">Save athlete</button>' + (id && athlete.active ? '<button type="button" class="button full ghost" data-action="archive-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(athlete.name) + '">Archive athlete</button><button type="button" class="button danger full" data-action="delete-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(athlete.name) + '">Delete permanently</button>' : "") + '</form>' + (id ? '<p class="right"><button class="button ghost" data-action="coach-athlete-history" data-athlete="' + esc(id) + '">View workout history</button></p>' : ""), true);
+  const fullName = athleteFullName(athlete);
+  shell('<section class="page-head"><div class="eyebrow">' + (id ? "Edit athlete" : "New athlete") + '</div><h1>' + (id ? esc(fullName) : "Add athlete") + '</h1></section><form data-form="athlete" data-athlete="' + esc(id || "") + '" class="stack"><section class="card"><div class="grid two"><label>First name<input name="first_name" required value="' + esc(athlete.first_name || "") + '"></label><label>Last name<input name="last_name" required value="' + esc(athlete.last_name || "") + '"></label></div><p class="notice rollover-note"><strong>Season rollover</strong><br>Moving this athlete to a new season’s team or age group? Edit their team here rather than creating a new profile. Their training history stays attached to this profile.</p><label class="inline"><input type="checkbox" name="active"' + (athlete.active ? " checked" : "") + '> Active in athlete selector</label><label>Teams<select multiple name="teams" size="5">' + teams.map((team) => '<option value="' + esc(team.id) + '"' + (assigned.includes(team.id) ? " selected" : "") + ">" + esc(team.name) + "</option>").join("") + '</select></label></section><button class="button primary full">Save athlete</button>' + (id && athlete.active ? '<button type="button" class="button full ghost" data-action="archive-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(fullName) + '">Archive athlete</button><button type="button" class="button danger full" data-action="delete-athlete" data-athlete="' + esc(id) + '" data-name="' + esc(fullName) + '">Delete permanently</button>' : "") + '</form>' + (id ? '<p class="right"><button class="button ghost" data-action="coach-athlete-history" data-athlete="' + esc(id) + '">View workout history</button></p>' : ""), true);
 }
 async function teamEditor(id) {
   const team = await db.single("teams", {select:"id,name,active",id:"eq." + id}, coachToken());
@@ -760,7 +764,10 @@ function copyPrior(exerciseId) {
 }
 async function saveAthlete(form) {
   const id = form.dataset.athlete, access = coachToken(), values = new FormData(form);
-  const body = {name:values.get("name"),active:Boolean(values.get("active")),role:"athlete"};
+  const firstName = String(values.get("first_name") || "").trim();
+  const lastName = String(values.get("last_name") || "").trim();
+  if (!firstName || !lastName) throw new Error("Enter both a first and last name.");
+  const body = {first_name:firstName,last_name:lastName,active:Boolean(values.get("active")),role:"athlete"};
   let athleteId = id;
   if (id) {
     await db.update("profiles", {id:"eq." + id}, body, access);
@@ -877,9 +884,9 @@ function captureBuilder() {
   });
 }
 async function coachAthleteHistory(athleteId) {
-  const profile = await db.single("profiles", {select:"id,name",id:"eq." + athleteId}, coachToken());
+  const profile = await db.single("profiles", {select:"id,first_name,last_name,name",id:"eq." + athleteId}, coachToken());
   const logs = await getWorkoutHistory(athleteId, coachToken());
-  shell('<section class="page-head"><div class="eyebrow">Athlete history</div><h1>' + esc(profile.name) + '</h1><p class="subtle">Completed sessions only.</p></section>' +
+  shell('<section class="page-head"><div class="eyebrow">Athlete history</div><h1>' + esc(athleteFullName(profile)) + '</h1><p class="subtle">Completed sessions only.</p></section>' +
     (logs.map((log) => '<button class="list-button" data-action="review-log" data-log="' + esc(log.id) + '"><span><strong>' + esc(log.session_name) + '</strong><br><span class="muted">' + shortDate(log.session_date) + (log.session_rpe != null ? " · RPE " + log.session_rpe : "") + '</span></span><span>›</span></button>').join("") || empty("No completed workouts yet.")), true);
 }
 async function eventAction(action, element) {

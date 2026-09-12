@@ -6,12 +6,12 @@ insert into public.teams (id, name) values
   ('00000000-0000-4000-8000-000000000102', 'Rehab Group')
 on conflict (id) do update set name = excluded.name;
 
-insert into public.profiles (id, role, name, active) values
-  ('00000000-0000-4000-8000-000000000001', 'athlete', 'Daniel Majer', true),
-  ('00000000-0000-4000-8000-000000000002', 'athlete', 'Athlete 2', true),
-  ('00000000-0000-4000-8000-000000000003', 'athlete', 'Athlete 3', true),
-  ('00000000-0000-4000-8000-000000000004', 'athlete', 'Athlete 4', true)
-on conflict (id) do update set name = excluded.name, active = excluded.active;
+insert into public.profiles (id, role, first_name, last_name, active) values
+  ('00000000-0000-4000-8000-000000000001', 'athlete', 'Daniel', 'Majer', true),
+  ('00000000-0000-4000-8000-000000000002', 'athlete', 'Athlete', '2', true),
+  ('00000000-0000-4000-8000-000000000003', 'athlete', 'Athlete', '3', true),
+  ('00000000-0000-4000-8000-000000000004', 'athlete', 'Athlete', '4', true)
+on conflict (id) do update set first_name = excluded.first_name, last_name = excluded.last_name, active = excluded.active;
 
 insert into public.athlete_teams (athlete_id, team_id) values
   ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101'),

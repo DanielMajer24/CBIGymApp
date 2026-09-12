@@ -94,6 +94,7 @@ textarea { min-height:88px; resize:vertical; }
 .muted { color:var(--muted); }
 .empty { padding:35px 16px; color:var(--muted); text-align:center; }
 .notice { padding:9px 11px; color:#cdeeff; font-size:.88rem; background:#102b3a; border-left:3px solid var(--cyan); border-radius:0 9px 9px 0; }
+.rollover-note { margin:2px 0; line-height:1.5; }
 .toast { position:fixed; z-index:10; bottom:83px; left:50%; max-width:calc(100% - 30px); padding:10px 14px; color:#fff; font-weight:720; background:#39244d; border:1px solid #6d4b88; border-radius:12px; box-shadow:0 12px 32px #0008; transform:translateX(-50%); }
 .modal-backdrop { position:fixed; z-index:20; inset:0; display:grid; padding:16px; background:#09050edd; place-items:end center; }
 .modal { width:100%; max-width:650px; max-height:90dvh; padding:18px; overflow:auto; background:#21152f; border:1px solid #624779; border-radius:20px; }

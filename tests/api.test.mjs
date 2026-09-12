@@ -9,6 +9,37 @@ global.window = {
 };
 
 const api = await import("../web/api.js");
+const names = await import("../web/names.js");
+
+test("active athlete queries include structured names", async () => {
+  let received;
+  global.fetch = async (url) => {
+    received = String(url);
+    return new Response(JSON.stringify([]), {status:200,headers:{"Content-Type":"application/json"}});
+  };
+
+  await api.getActiveAthletes("athlete-access-token");
+
+  assert.match(received, /profiles\?/);
+  assert.match(received, /select=id%2Cfirst_name%2Clast_name%2Cname/);
+  assert.match(received, /role=eq\.athlete/);
+  assert.match(received, /active=eq\.true/);
+});
+
+test("team picker only adds a last initial for duplicate first names", () => {
+  const athletes = [
+    {id:"ben-t",first_name:"Ben",last_name:"Taylor"},
+    {id:"ben-w",first_name:"Ben",last_name:"Wilson"},
+    {id:"max",first_name:"Max",last_name:"Brown"},
+  ];
+
+  assert.deepEqual(
+    athletes.map((athlete) => names.athletePickerLabel(athlete, athletes)),
+    ["Ben T.", "Ben W.", "Max"]
+  );
+  assert.equal(names.athleteFullName(athletes[0]), "Ben Taylor");
+  assert.equal(names.athleteFirstName(athletes[0]), "Ben");
+});
 
 test("REST upsert uses a conflict target and merge preference", async () => {
   let received;
