@@ -11,7 +11,8 @@ frontend so session colour types and workout snapshots exist, then run
 authentication flow. Run 006_add_profile_names.sql before releasing the
 first/last-name athlete editor. Migration 003_add_u18_marlins_roster.sql
 replaces the seed athlete roster with the U18 Marlins without deleting
-historical logs.
+historical logs. Run 007_add_age_group_codes.sql before releasing the
+age-group athlete entry flow.
 
 ## Coach account
 
@@ -25,13 +26,21 @@ historical logs.
 The application only grants coach screens to an authenticated user linked to
 an active coach profile. Never use a service-role key in the browser.
 
-## Shared athlete entry code
+## Age-group athlete entry codes
 
-After applying migration 002, sign into Coach mode and open Dashboard →
-Manage beside “Athlete entry code”. Choose one four-digit squad code. Athletes
-enter this once per device before choosing their public profile; the code is
-verified server-side and is not stored in the delivered JavaScript or browser
-storage. It is a casual access deterrent, not individual authentication.
+After applying migration 007, sign into Coach mode and open Dashboard →
+Manage beside “Athlete entry codes”. Set a four-digit code for each age group
+you use: U12, U14, U16, and/or U18. Athletes choose their age group, enter that
+group's code, then select their team and public profile. The code is verified
+server-side and is not stored in the delivered JavaScript or browser storage.
+It is a casual access deterrent, not individual authentication.
+
+Every team belongs to one age group. The migration assigns the existing U18
+Marlins team to U18 and transfers the former single entry code to U18. Open
+each other active team in Coach mode and choose its age group before athletes
+use the new flow. Coaches use normal Supabase Auth and do not use an age-group
+code. Team names may repeat across age groups, such as U12 Marlins and U18
+Marlins.
 
 Before releasing migration 005, open Supabase Dashboard → Authentication →
 General Configuration (or Sign In / Providers in the current dashboard) and
@@ -45,9 +54,9 @@ the entry-code screen because the app cannot obtain the required session.
 RLS is enabled on every table in schema.sql.
 
 - For database access, the public `anon` key can only call the boolean
-  PIN-verification function; it has no direct table access and cannot start,
-  finish, or edit workouts.
-- After the PIN is accepted, the app creates an anonymous Auth user. That
+  age-group code-verification function; it has no direct table access and
+  cannot start, finish, or edit workouts.
+- After the group code is accepted, the app creates an anonymous Auth user. That
   authenticated session can read active roster/session data, call the narrowly
   scoped start/resume and finish functions, and write actual set values only
   while a workout is in progress.
@@ -58,11 +67,11 @@ RLS is enabled on every table in schema.sql.
   trusted-squad user could impersonate another roster entry. The policies
   prevent that athlete client from altering programming/reference data.
 
-This is a deliberate improvement, not a claim that the shared PIN is strong
+This is a deliberate improvement, not a claim that an age-group code is strong
 authentication. Anonymous sign-in is an unauthenticated Supabase endpoint, so
 someone who deliberately uses the public key to create their own anonymous
 session can reach the same shared-squad athlete access. It stops casual direct
-REST access with only the key and makes the normal app flow require the PIN.
+REST access with only the key and makes the normal app flow require a code.
 Per-athlete identity and write attribution would require individual athlete
 accounts, which is a separate product decision.
 

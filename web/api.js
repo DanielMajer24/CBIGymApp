@@ -110,7 +110,7 @@ export async function getActiveAthletes(token) {
 }
 
 export async function getAthleteTeams(athleteId, token) {
-  return db.list("athlete_teams", { select: "team_id,teams(id,name)", athlete_id: `eq.${athleteId}` }, token);
+  return db.list("athlete_teams", { select: "team_id,teams(id,name,age_group)", athlete_id: `eq.${athleteId}` }, token);
 }
 
 export async function getAssignedSessions(athleteId, date, token) {
@@ -222,10 +222,10 @@ export async function getCoachProfile(accessToken) {
   return { user, profile: profiles[0] || null };
 }
 
-export function verifyAthleteEntryPin(pin) {
-  return db.rpc("verify_athlete_entry_pin", { p_pin: pin });
+export function verifyAthleteEntryPin(ageGroup, pin) {
+  return db.rpc("verify_athlete_entry_pin", { p_age_group: ageGroup, p_pin: pin });
 }
 
-export function setAthleteEntryPin(pin, accessToken) {
-  return db.rpc("set_athlete_entry_pin", { p_pin: pin }, accessToken);
+export function setAthleteEntryPin(ageGroup, pin, accessToken) {
+  return db.rpc("set_athlete_entry_pin", { p_age_group: ageGroup, p_pin: pin }, accessToken);
 }
