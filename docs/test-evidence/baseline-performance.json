@@ -1,0 +1,29 @@
+{
+  "environment": "Loopback Chrome + PGlite; synthetic Auth/REST adapter, not hosted staging",
+  "sets": 6,
+  "exercises": 2,
+  "injectedWriteLatencyMs": 80,
+  "finishToModalMs": 815.6620830000002,
+  "finishToSuccessMs": 1637.439875,
+  "writeRequests": 15,
+  "writeResponseMs": [
+    84.02629200000001,
+    83.48937500000011,
+    83.82541700000002,
+    82.99679199999991,
+    82.5517920000002,
+    82.82008300000007,
+    83.78216599999996,
+    84.02183299999979,
+    85.13270899999952,
+    84.15633400000024,
+    83.6298340000003,
+    84.35016700000051,
+    84.06800000000021,
+    82.03783300000032,
+    82.77150000000074
+  ],
+  "coachesRedirect": true,
+  "completedEditing": false,
+  "dashboardCalendar": false
+}

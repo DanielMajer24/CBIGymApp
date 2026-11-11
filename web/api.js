@@ -26,13 +26,25 @@ function queryString(params = {}) {
 
 async function request(path, options = {}, token) {
   if (!configured) throw fail("Supabase is not configured", "Copy web/app-config.example.js to web/app-config.js and add your project URL and anon key.");
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: headers(token, options.headers),
-  });
-  const body = response.status === 204 ? null : await response.json().catch(() => null);
-  if (!response.ok) throw fail(body?.message || body?.error || `Request failed (${response.status})`, body?.hint || body?.details || "");
-  return body;
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options, signal: controller.signal,
+      headers: headers(token, options.headers),
+    });
+    const body = response.status === 204 ? null : await response.json();
+    if (!response.ok) {
+      const error = fail(body?.message || body?.error || `Request failed (${response.status})`, body?.hint || body?.details || "");
+      error.code = body?.code;
+      error.status = response.status;
+      throw error;
+    }
+    return body;
+  } catch (error) {
+    if (controller.signal.aborted) throw fail("Saving took too long. Your changes are still on this device; try again.");
+    throw error;
+  } finally { clearTimeout(deadline); }
 }
 
 export const db = {
@@ -126,8 +138,10 @@ function normaliseAssignment(assignment) {
 
 export async function getAssignedSessionsInRange(athleteId, startDate, endDate, token) {
   const assignments = await db.list("session_assignments", {
-    select: "id,session_id,programmed_sessions!session_assignments_session_id_fkey(id,session_date,name,description,session_type,estimated_duration_minutes)",
+    select: "id,session_id,programmed_sessions!session_assignments_session_id_fkey!inner(id,session_date,name,description,session_type,estimated_duration_minutes)",
     athlete_id: `eq.${athleteId}`,
+    "programmed_sessions.session_date": `gte.${startDate}`,
+    "programmed_sessions.and": `(session_date.lte.${endDate})`,
   }, token);
   return assignments
     .map(normaliseAssignment)
@@ -177,7 +191,41 @@ export function saveSet(set, token) {
 }
 
 export function finishWorkout(logId, rpe, notes, token) {
-  return db.rpc("finish_workout", { p_workout_log_id: logId, p_session_rpe: rpe || null, p_notes: notes || null }, token);
+  return db.rpc("finish_workout", { p_workout_log_id: logId, p_session_rpe: rpe ?? null, p_notes: notes || null }, token);
+}
+
+export async function saveWorkout(log, sets, complete, rpe, notes, token) {
+  const response = await db.rpc("save_workout", {
+    p_workout_log_id: log.id, p_athlete_id: log.athlete_id, p_sets: sets,
+    p_expected_updated_at: log.updated_at, p_complete: complete,
+    p_session_rpe: rpe ?? null, p_notes: notes || null,
+  }, token);
+  const saved = Array.isArray(response) ? response[0] : response;
+  if (!saved?.updated_at || saved.id !== log.id || saved.athlete_id !== log.athlete_id || (complete && saved.status !== "completed")) {
+    throw fail("The server did not confirm the save. Your changes are still on this device.");
+  }
+  return saved;
+}
+
+export async function getTeamCalendar(startDate, endDate, token) {
+  // Bounded month query, paginated so large schedules aren't silently truncated.
+  const sessions = [];
+  for (let offset = 0; ; offset += 200) {
+    const page = await db.list("programmed_sessions", {
+      select: "id,name,session_date,session_type,description,session_assignments(assigned_team_id,teams(id,name,age_group))",
+      session_date: `gte.${startDate}`, and: `(session_date.lte.${endDate})`,
+      order: "session_date.asc,id.asc", limit: "200", offset,
+    }, token);
+    sessions.push(...page);
+    if (page.length < 200) return sessions.map(session => {
+      const teams = new Map();
+      for (const assignment of session.session_assignments || []) {
+        const team = Array.isArray(assignment.teams) ? assignment.teams[0] : assignment.teams;
+        if (team) teams.set(team.id, team);
+      }
+      return { session, teams: [...teams.values()], coach: true };
+    });
+  }
 }
 
 export function getPreviousSets(athleteId, exerciseId, currentLogId, token) {
