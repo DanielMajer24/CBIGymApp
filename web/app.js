@@ -1,7 +1,8 @@
 import {
   configured, auth, db, getActiveAthletes, getAthleteTeams, getAssignedSessions,
   getAssignedSessionsInRange, getAssignedSession, getSessionExercises, getWorkout, getWorkoutDetail,
-  startWorkout, saveWorkout, getTeamCalendar, getPreviousSets, getExerciseHistory, getWorkoutHistory,
+  startWorkout, saveWorkout, getTeamCalendar, getSessionsPage, previewDuplication, duplicateTrainingPeriod,
+  getPreviousSets, getExerciseHistory, getWorkoutHistory,
   getWorkoutLogsInRange, getInProgressWorkouts, getCoachProfile,
   verifyAthleteEntryPin, setAthleteEntryPin,
 } from "./api.js";
@@ -26,6 +27,9 @@ function day() {
   const value = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type,part.value]));
   return value.year + "-" + value.month + "-" + value.day;
 }
+function addDays(value, amount) { const date = new Date(value + "T00:00:00Z"); date.setUTCDate(date.getUTCDate() + amount); return date.toISOString().slice(0, 10); }
+function dayDiff(start, end) { return Math.round((new Date(end + "T00:00:00Z") - new Date(start + "T00:00:00Z")) / 86400000); }
+function weekBounds(value) { const date = new Date(value + "T00:00:00Z"); const weekday = (date.getUTCDay() + 6) % 7; return { start: addDays(value, -weekday), end: addDays(value, 6 - weekday) }; }
 function dateLabel(value) { return new Intl.DateTimeFormat("en-AU", { weekday:"long", day:"numeric", month:"long" }).format(new Date(value + "T12:00:00")); }
 function shortDate(value) { return new Intl.DateTimeFormat("en-AU", { day:"numeric", month:"short" }).format(new Date(value + "T12:00:00")); }
 function monthKey(value = day()) { return value.slice(0, 7); }
@@ -456,39 +460,120 @@ function coachLogin(message) {
     (message ? '<div class="error-box">' + esc(message) + "</div>" : "") +
     '<form data-form="coach-login" class="stack"><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="button primary full">Sign in</button></form><p class="subtle">No PIN or admin secret is stored in the browser.</p></section>', true);
 }
+function dashboardFilterUrl(routeName, params, overrides) {
+  const next = new URLSearchParams(params);
+  Object.entries(overrides).forEach(([key, value]) => { if (value) next.set(key, value); else next.delete(key); });
+  const query = next.toString();
+  return routeName + (query ? "?" + query : "");
+}
 async function coachDashboard() {
   const access = coachToken();
-  const month = validMonth(route().params.get("month")), bounds = monthBounds(month);
+  const params = route().params;
+  const month = validMonth(params.get("month")), bounds = monthBounds(month);
+  const teamFilter = params.get("team") || "", ageGroupFilter = params.get("ageGroup") || "";
   const results = await Promise.all([
-    db.list("programmed_sessions", {select:"*",session_date:"eq." + day(),order:"created_at.desc"}, access),
     getActiveAthletes(access),
-    db.list("workout_logs", {select:"id,status",session_date:"eq." + day()}, access),
-    getTeamCalendar(bounds.start, bounds.end, access),
+    db.list("teams", {select:"id,name,age_group,active",active:"eq.true",order:"age_group.asc,name.asc"}, access),
+    getTeamCalendar(bounds.start, bounds.end, access, {teamId: teamFilter || undefined, ageGroup: ageGroupFilter || undefined}),
   ]);
-  const sessions = results[0], athletes = results[1], logs = results[2], done = logs.filter((log) => log.status === "completed").length;
-  const sessionIds = sessions.map((session) => session.id);
+  const athletes = results[0], teams = results[1], calendar = results[2];
+  const ageGroups = [...new Set(teams.map((team) => team.age_group).filter(Boolean))].sort();
+  // UI filters select *which* sessions to show; they never widen what RLS/is_coach() already authorise server-side.
+  const todayItems = calendar.filter((item) => item.session.session_date === day());
+  const todaySessionIds = todayItems.map((item) => item.session.id);
+  const logs = todaySessionIds.length
+    ? await db.list("workout_logs", {select:"id,status", session_id:`in.(${todaySessionIds.join(",")})`}, access)
+    : [];
+  const done = logs.filter((log) => log.status === "completed").length;
   // Denominator is athletes actually assigned today, not just athletes who have started —
   // otherwise a single finished session reads as "1/1" while the rest of the squad hasn't begun.
-  const assignments = sessionIds.length
-    ? await db.list("session_assignments", {select:"athlete_id", session_id:`in.(${sessionIds.join(",")})`}, access)
+  const assignments = todaySessionIds.length
+    ? await db.list("session_assignments", {select:"athlete_id", session_id:`in.(${todaySessionIds.join(",")})`}, access)
     : [];
   const assigned = assignments.length;
+  const filterBar = '<section class="card tight"><div class="grid two">' +
+    '<label>Team<select data-dashboard-filter="team"><option value="">All Teams</option>' +
+      teams.map((team) => '<option value="' + esc(team.id) + '"' + (teamFilter === team.id ? " selected" : "") + '>' + esc(teamLabel(team)) + "</option>").join("") +
+    '</select></label><label>Age group<select data-dashboard-filter="ageGroup"><option value="">All Age Groups</option>' +
+      ageGroups.map((group) => '<option value="' + esc(group) + '"' + (ageGroupFilter === group ? " selected" : "") + '>' + esc(group) + "</option>").join("") +
+    "</select></label></div>" +
+    (teamFilter || ageGroupFilter ? '<button type="button" class="button small ghost" data-action="reset-dashboard-filters">Reset filters</button>' : "") +
+    "</section>";
   shell('<section class="page-head"><div class="eyebrow">Coach dashboard</div><h1>Today</h1><p class="subtle">' + dateLabel(day()) + "</p></section>" +
-    '<div class="grid three"><article class="card tight"><div class="metric">' + sessions.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + assigned + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
-    '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a></div>' +
+    filterBar +
+    '<div class="grid three"><article class="card tight"><div class="metric">' + todayItems.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + assigned + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
+    '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a><a class="button" href="#coach/duplicate-period">⧉ Duplicate training period</a></div>' +
     '<section class="card tight"><div class="split"><div><h2>Athlete entry codes</h2><p class="subtle">Manage training codes for ' + athleteAgeGroups.join(', ') + '.</p></div><a class="button small" href="#coach/access-codes">Manage</a></div></section>' +
-    scheduledTrainingsCard(month, results[3], 'coach/dashboard') +
-    '<section class="card"><h2>Scheduled team sessions</h2>' + (results[3].map(item => '<button class="list-button" data-action="review-session" data-session="' + esc(item.session.id) + '"><span><strong>' + esc(item.session.name) + '</strong><br>' + esc(shortDate(item.session.session_date)) + ' · ' + esc(item.teams.map(teamLabel).join(', ') || 'Individual assignments') + '</span><span>›</span></button>').join('') || '<p class="subtle">No sessions scheduled this month.</p>') + '</section>' +
-    '<section class="card"><h2>Today’s sessions</h2>' + (sessions.map((session) => '<button class="list-button" data-action="review-session" data-session="' + esc(session.id) + '"><span><strong>' + esc(session.name) + '</strong><br><span class="muted">' + (session.estimated_duration_minutes || "—") + " min · " + esc(session.description || "No description") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No sessions scheduled today.</p>') + "</section>", true);
+    scheduledTrainingsCard(month, calendar, "coach/dashboard") +
+    '<section class="card"><h2>Scheduled team sessions</h2>' + (calendar.map((item) => '<button class="list-button" data-action="review-session" data-session="' + esc(item.session.id) + '"><span><strong>' + esc(item.session.name) + '</strong><br>' + esc(shortDate(item.session.session_date)) + ' · ' + esc(item.teams.map(teamLabel).join(', ') || 'Individual assignments') + '</span><span>›</span></button>').join('') || '<p class="subtle">No sessions match the current filters this month.</p>') + '</section>' +
+    '<section class="card"><h2>Today’s sessions</h2>' + (todayItems.map((item) => '<button class="list-button" data-action="review-session" data-session="' + esc(item.session.id) + '"><span><strong>' + esc(item.session.name) + '</strong><br><span class="muted">' + (item.session.estimated_duration_minutes || "—") + " min · " + esc(item.session.description || "No description") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No sessions match the current filters today.</p>') + "</section>", true);
 }
 function coachAccessCodes() {
   const cards = athleteAgeGroups.map((ageGroup) => '<section class="card"><div class="split"><div><div class="eyebrow">' + ageGroup + '</div><h2>' + ageGroup + ' athlete code</h2></div><span class="pill">Four digits</span></div><form data-form="athlete-access-code" data-age-group="' + ageGroup + '" class="stack"><label>New ' + ageGroup + ' code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><label>Confirm code<input class="pin-input" name="confirm_pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><button class="button primary full">Save ' + ageGroup + ' code</button></form></section>').join("");
   shell('<section class="page-head"><div class="eyebrow">Athlete mode</div><h1>Age group codes</h1><p class="subtle">Each age group has its own code. Codes are not displayed or stored in the browser.</p></section>' + cards, true);
 }
+const sessionFilters = {"7days":"Previous 7 days onward","upcoming":"Upcoming sessions","30days":"Last 30 days","custom":"Custom date range","all":"All sessions"};
+function sessionsFilterBounds(filterValue, params) {
+  if (filterValue === "upcoming") return {startDate: day(), endDate: null};
+  if (filterValue === "30days") return {startDate: addDays(day(), -30), endDate: day()};
+  if (filterValue === "all") return {startDate: null, endDate: null};
+  if (filterValue === "custom") return {startDate: params.get("start") || addDays(day(), -7), endDate: params.get("end") || null};
+  return {startDate: addDays(day(), -7), endDate: null};
+}
+function sessionsUrl(params, overrides) {
+  const next = new URLSearchParams(params);
+  Object.entries(overrides).forEach(([key, value]) => { if (value === null || value === "") next.delete(key); else next.set(key, value); });
+  return "coach/sessions?" + next.toString();
+}
 async function coachSessions() {
-  const sessions = await db.list("programmed_sessions", {select:"*",order:"session_date.desc",limit:"100"}, coachToken());
-  shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Programming</div><h1>Sessions</h1></div><a class="button primary" href="#coach/session/new">+ Create</a></div><p class="subtle">Create once, assign, and review completion without modifying athlete logs.</p></section>' +
-    (sessions.map((session) => '<article class="card"><div class="split"><div><div class="eyebrow">' + shortDate(session.session_date) + '</div><h2>' + esc(session.name) + '</h2><p class="subtle">' + esc(session.description || "No description") + '</p></div><div class="stack"><button class="button small" data-action="review-session" data-session="' + esc(session.id) + '">Review</button><button class="button small ghost" data-action="edit-session" data-session="' + esc(session.id) + '">Edit</button><button class="button small danger" data-action="delete-session" data-session="' + esc(session.id) + '" data-name="' + esc(session.name) + '">Delete</button></div></div></article>').join("") || empty("No sessions yet. Create your first session.")), true);
+  const access = coachToken();
+  const params = route().params;
+  const filterValue = sessionFilters[params.get("filter")] ? params.get("filter") : "7days";
+  const page = Math.max(0, parseInt(params.get("page") || "0", 10) || 0);
+  const bounds = sessionsFilterBounds(filterValue, params);
+  const {sessions, hasMore} = await getSessionsPage({startDate: bounds.startDate, endDate: bounds.endDate, page, pageSize: 20}, access);
+  const filterBar = '<section class="card tight"><div class="grid two">' +
+    '<label>Date range<select data-session-filter>' + Object.entries(sessionFilters).map(([value, label]) => '<option value="' + value + '"' + (value === filterValue ? " selected" : "") + ">" + label + "</option>").join("") + "</select></label>" +
+    (filterValue === "custom" ? '<label>From<input type="date" data-session-filter-start value="' + esc(bounds.startDate || "") + '"></label><label>To<input type="date" data-session-filter-end value="' + esc(bounds.endDate || "") + '"></label>' : "") +
+    "</div></section>";
+  shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Programming</div><h1>Sessions</h1></div><a class="button primary" href="#coach/session/new">+ Create</a></div><p class="subtle">Create once, assign, and review completion without modifying athlete logs.</p></section>' + filterBar +
+    (sessions.map((session) => '<article class="card"><div class="split"><div><div class="eyebrow">' + shortDate(session.session_date) + '</div><h2>' + esc(session.name) + '</h2><p class="subtle">' + esc(session.description || "No description") + '</p></div><div class="stack"><button class="button small" data-action="review-session" data-session="' + esc(session.id) + '">Review</button><button class="button small ghost" data-action="edit-session" data-session="' + esc(session.id) + '">Edit</button><button class="button small danger" data-action="delete-session" data-session="' + esc(session.id) + '" data-name="' + esc(session.name) + '">Delete</button></div></div></article>').join("") || empty("No sessions in this range.")) +
+    '<div class="toolbar"><button class="button small ghost" data-action="sessions-page" data-page="' + (page - 1) + '"' + (page === 0 ? " disabled" : "") + '>← Previous</button><span class="subtle">Page ' + (page + 1) + '</span><button class="button small ghost" data-action="sessions-page" data-page="' + (page + 1) + '"' + (hasMore ? "" : " disabled") + ">Next →</button></div>", true);
+}
+async function coachDuplicatePeriod() {
+  if (!state.duplicate) {
+    const teams = await db.list("teams", {select:"id,name,age_group",active:"eq.true",order:"age_group.asc,name.asc"}, coachToken());
+    state.duplicate = {sourceStart: day(), sourceEnd: day(), destinationStart: addDays(day(), 7), conflictMode: "add", destinationTeamId: "", teams, preview: null, excluded: new Set(), result: null, busy: false, error: ""};
+  }
+  renderDuplicatePeriod();
+}
+function duplicatePreviewRow(row, excluded) {
+  const teams = row.team_names?.length ? esc(row.team_names.join(", ")) : "Individual assignments";
+  return '<label class="list-button"><input type="checkbox" data-dup-exclude value="' + esc(row.session_id) + '"' + (excluded ? "" : " checked") + '><span><strong>' + esc(row.session_name) + "</strong><br>" + esc(shortDate(row.session_date)) + " → " + esc(shortDate(row.new_date)) + " · " + teams + " · " + row.exercise_count + " exercise" + (Number(row.exercise_count) === 1 ? "" : "s") + "</span>" + (row.would_conflict ? '<span class="pill">Already duplicated here</span>' : "") + "</label>";
+}
+function renderDuplicatePeriod() {
+  const d = state.duplicate;
+  const valid = d.sourceStart && d.sourceEnd && d.destinationStart && d.sourceEnd >= d.sourceStart;
+  const destEnd = valid ? addDays(d.destinationStart, dayDiff(d.sourceStart, d.sourceEnd)) : null;
+  const teamOptions = '<option value="">Keep original team assignments</option>' + d.teams.map((team) => '<option value="' + esc(team.id) + '"' + (d.destinationTeamId === team.id ? " selected" : "") + ">" + esc(teamLabel(team)) + "</option>").join("");
+  const setup = '<section class="card"><div class="grid two">' +
+    '<label>Source start<input type="date" data-dup="sourceStart" value="' + esc(d.sourceStart) + '"></label>' +
+    '<label>Source end<input type="date" data-dup="sourceEnd" value="' + esc(d.sourceEnd) + '"></label>' +
+    '<label>Destination start<input type="date" data-dup="destinationStart" value="' + esc(d.destinationStart) + '"></label>' +
+    '<label>Destination end (calculated)<input type="date" value="' + esc(destEnd || "") + '" disabled></label></div>' +
+    '<button type="button" class="button small ghost" data-action="dup-select-week">Select full week (Mon–Sun)</button>' +
+    '<div class="grid two"><label>Reassign to team (optional)<select data-dup="destinationTeamId">' + teamOptions + '</select></label>' +
+    '<label>If already duplicated here<select data-dup="conflictMode"><option value="add"' + (d.conflictMode === "add" ? " selected" : "") + '>Add a new copy anyway</option><option value="skip"' + (d.conflictMode === "skip" ? " selected" : "") + "\">Skip that session</option></select></label></div>" +
+    (d.error ? '<p class="error-box">' + esc(d.error) + "</p>" : "") +
+    '<button type="button" class="button primary full" data-action="dup-preview"' + (valid ? "" : " disabled") + ">Preview</button></section>";
+  const preview = d.preview ? '<section class="card"><h2>Preview</h2><p class="subtle">' + d.preview.length + " session" + (d.preview.length === 1 ? "" : "s") + " found · uncheck any you want to leave out.</p>" +
+    (d.preview.map((row) => duplicatePreviewRow(row, d.excluded.has(row.session_id))).join("") || '<p class="subtle">No sessions were scheduled in the source period.</p>') +
+    (d.preview.length ? '<button type="button" class="button primary full" data-action="dup-confirm"' + (d.busy ? " disabled" : "") + ">" + (d.busy ? "Duplicating…" : "Duplicate selected sessions") + "</button>" : "") +
+    '<button type="button" class="button full ghost" data-action="dup-cancel">Cancel</button></section>' : "";
+  const addedCount = d.result ? d.result.filter((row) => row.status === "added").length : 0;
+  const skippedCount = d.result ? d.result.filter((row) => row.status === "skipped").length : 0;
+  const result = d.result ? '<section class="card"><h2>Done</h2><p class="subtle">' + addedCount + " session" + (addedCount === 1 ? "" : "s") + " added, " + skippedCount + ' skipped as already duplicated.</p><button type="button" class="button primary full" data-action="dup-reset">Duplicate another period</button></section>' : "";
+  shell('<section class="page-head"><div class="eyebrow">Programming</div><h1>Duplicate training period</h1><p class="subtle">Copy a week, custom range, or multiweek block to a new date range. Completed athlete results are never copied, and the source period is never changed.</p></section>' + setup + preview + result, true);
 }
 async function coachReview(sessionId) {
   const access = coachToken();
@@ -555,10 +640,30 @@ async function setupBuilder(kind, id, templateId) {
   if (!b.entries.length && b.exercises.length) b.entries = [blankEntry(b.exercises[0])];
   state.builder = b;
 }
+function comboOptions(combo) {
+  try { return JSON.parse(combo.dataset.comboOptions || "[]"); } catch { return []; }
+}
+function filterCombo(input) {
+  const combo = input.closest("[data-combo]"), options = comboOptions(combo);
+  const search = input.value.trim().toLowerCase();
+  const matches = search ? options.filter((option) => option.label.toLowerCase().includes(search)) : options;
+  const list = combo.querySelector("[data-combo-list]");
+  list.innerHTML = matches.slice(0, 50).map((option) => '<button type="button" class="combo-option" data-action="pick-combo" data-id="' + esc(option.id) + '" data-label="' + esc(option.label) + '">' + esc(option.label) + "</button>").join("") || '<p class="combo-empty">No matches</p>';
+  list.hidden = false;
+  const valueInput = combo.querySelector("[data-combo-value]");
+  if (!options.some((option) => option.label === input.value)) valueInput.value = "";
+}
+function comboField(name, options, selectedId, placeholder) {
+  const current = options.find((option) => option.id === selectedId)?.label || "";
+  return '<div class="combo" data-combo data-combo-options="' + esc(JSON.stringify(options)) + '">' +
+    '<input type="text" class="combo-input" data-combo-search autocomplete="off" placeholder="' + esc(placeholder) + '" value="' + esc(current) + '">' +
+    '<input type="hidden" name="' + esc(name) + '" data-combo-value value="' + esc(selectedId || "") + '">' +
+    '<div class="combo-list" data-combo-list hidden></div></div>';
+}
 function builderInputs(entry, index, library) {
-  const choices = ['<option value="">Choose exercise</option>'].concat(library.map((exercise) => '<option value="' + esc(exercise.id) + '"' + (entry.exercise_id === exercise.id ? " selected" : "") + '>' + esc(exercise.name) + "</option>")).join("");
+  const options = library.map((exercise) => ({id: exercise.id, label: exercise.name}));
   return '<article class="card coach-builder-item"><div class="split"><h3>Exercise ' + (index + 1) + '</h3><div class="reorder"><button type="button" class="button small ghost" data-action="move-entry" data-index="' + index + '" data-direction="-1">↑</button><button type="button" class="button small ghost" data-action="move-entry" data-index="' + index + '" data-direction="1">↓</button><button type="button" class="button small danger" data-action="remove-entry" data-index="' + index + '">×</button></div></div>' +
-    '<div class="grid two"><label>Exercise<select name="exercise_id_' + index + '">' + choices + '</select></label><label>Sets<input name="sets_' + index + '" type="number" min="1" max="30" value="' + esc(entry.sets || 3) + '"></label><label>Superset<select name="superset_' + index + '">' + supersetOptions(entry.superset_group) + '</select></label><label>Reps<input name="reps_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_reps || "") + '"></label><label>Load (kg)<input name="load_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_load_kg || "") + '"></label><label>Percentage<input name="percent_' + index + '" type="number" min="0" max="100" step=".5" value="' + esc(entry.prescribed_percent || "") + '"></label><label>Target RPE<input name="rpe_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rpe || "") + '"></label><label>Rest (seconds)<input name="rest_' + index + '" type="number" min="0" value="' + esc(entry.rest_seconds || "") + '"></label><label>Tempo<input name="tempo_' + index + '" value="' + esc(entry.tempo || "") + '"></label></div><label>Coach notes<textarea name="notes_' + index + '">' + esc(entry.coach_notes || "") + '</textarea></label><details><summary>More prescription options</summary><div class="grid two"><label>Target RIR<input name="rir_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rir || "") + '"></label><label>Custom unit<input name="unit_' + index + '" value="' + esc(entry.custom_unit || "") + '"></label><label>Video URL<input name="video_' + index + '" type="url" value="' + esc(entry.video_url || "") + '"></label></div><label>Exercise instructions<textarea name="instructions_' + index + '">' + esc(entry.instructions || "") + "</textarea></label></details></article>";
+    '<div class="grid two"><label>Exercise' + comboField("exercise_id_" + index, options, entry.exercise_id, "Search exercise") + '</label><label>Sets<input name="sets_' + index + '" type="number" min="1" max="30" value="' + esc(entry.sets || 3) + '"></label><label>Superset<select name="superset_' + index + '">' + supersetOptions(entry.superset_group) + '</select></label><label>Reps<input name="reps_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_reps || "") + '"></label><label>Load (kg)<input name="load_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_load_kg || "") + '"></label><label>Percentage<input name="percent_' + index + '" type="number" min="0" max="100" step=".5" value="' + esc(entry.prescribed_percent || "") + '"></label><label>Target RPE<input name="rpe_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rpe || "") + '"></label><label>Rest (seconds)<input name="rest_' + index + '" type="number" min="0" value="' + esc(entry.rest_seconds || "") + '"></label><label>Tempo<input name="tempo_' + index + '" value="' + esc(entry.tempo || "") + '"></label></div><label>Coach notes<textarea name="notes_' + index + '">' + esc(entry.coach_notes || "") + '</textarea></label><details><summary>More prescription options</summary><div class="grid two"><label>Target RIR<input name="rir_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rir || "") + '"></label><label>Custom unit<input name="unit_' + index + '" value="' + esc(entry.custom_unit || "") + '"></label><label>Video URL<input name="video_' + index + '" type="url" value="' + esc(entry.video_url || "") + '"></label></div><label>Exercise instructions<textarea name="instructions_' + index + '">' + esc(entry.instructions || "") + "</textarea></label></details></article>";
 }
 function builder() {
   const b = state.builder;
@@ -574,8 +679,10 @@ function builder() {
 }
 async function coachTemplates() {
   const templates = await db.list("session_templates", {select:"*",order:"updated_at.desc"}, coachToken());
-  shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Reusable programming</div><h1>Templates</h1></div><a class="button primary" href="#coach/template/new">+ Template</a></div><p class="subtle">Build a workout once, then schedule a copy whenever you need it.</p></section>' +
-    (templates.map((template) => '<article class="card"><div class="split"><div><h2>' + esc(template.name) + '</h2><p class="subtle">' + esc(template.description || "No description") + '</p></div><div class="stack"><a class="button small primary" href="#coach/session/new?template=' + esc(template.id) + '">Use template</a><button class="button small ghost" data-action="edit-template" data-template="' + esc(template.id) + '">Edit</button></div></div></article>').join("") || empty("No templates yet. Save one of your common sessions.")), true);
+  shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Reusable programming</div><h1>Templates</h1></div><a class="button primary" href="#coach/template/new">+ Template</a></div><p class="subtle">Build a workout once, then schedule a copy whenever you need it.</p>' +
+    (templates.length ? '<input data-quick-search="[data-template-card]" type="search" placeholder="Search templates" aria-label="Search templates">' : "") + '</section>' +
+    (templates.map((template) => '<article class="card" data-template-card data-search="' + esc(template.name.toLowerCase()) + '"><div class="split"><div><h2>' + esc(template.name) + '</h2><p class="subtle">' + esc(template.description || "No description") + '</p></div><div class="stack"><a class="button small primary" href="#coach/session/new?template=' + esc(template.id) + '">Use template</a><button class="button small ghost" data-action="edit-template" data-template="' + esc(template.id) + '">Edit</button></div></div></article>').join("") || empty("No templates yet. Save one of your common sessions.")) +
+    (templates.length ? '<p class="subtle hidden" data-quick-search-empty>No templates match your search.</p>' : ""), true);
 }
 async function coachAthletes() {
   const access = coachToken();
@@ -606,8 +713,9 @@ async function teamEditor(id) {
 }
 async function coachExercises() {
   const exercises = await db.list("exercises", {select:"*",order:"name.asc"}, coachToken());
-  shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Exercise library</div><h1>Exercises</h1></div><a class="button primary" href="#coach/exercise/new">+ Exercise</a></div><p class="subtle">Searchable building blocks with a tracking type that adapts athlete logging.</p><input id="exercise-search" type="search" placeholder="Search exercise library" aria-label="Search exercise library"></section>' +
-    exercises.map((exercise) => '<button class="list-button" data-exercise-card data-search="' + esc((exercise.name + " " + exercise.category).toLowerCase()) + '" data-action="edit-exercise" data-exercise="' + esc(exercise.id) + '"><span><strong>' + esc(exercise.name) + '</strong><br><span class="muted">' + esc(exercise.category) + " · " + esc(exercise.tracking_type.replace("_"," + ")) + '</span></span><span class="pill">' + (exercise.active ? "Active" : "Inactive") + "</span></button>").join(""), true);
+  shell('<section class="page-head"><div class="split"><div><div class="eyebrow">Exercise library</div><h1>Exercises</h1></div><a class="button primary" href="#coach/exercise/new">+ Exercise</a></div><p class="subtle">Searchable building blocks with a tracking type that adapts athlete logging.</p><input data-quick-search="[data-exercise-card]" type="search" placeholder="Search exercise library" aria-label="Search exercise library"></section>' +
+    exercises.map((exercise) => '<button class="list-button" data-exercise-card data-search="' + esc((exercise.name + " " + exercise.category).toLowerCase()) + '" data-action="edit-exercise" data-exercise="' + esc(exercise.id) + '"><span><strong>' + esc(exercise.name) + '</strong><br><span class="muted">' + esc(exercise.category) + " · " + esc(exercise.tracking_type.replace("_"," + ")) + '</span></span><span class="pill">' + (exercise.active ? "Active" : "Inactive") + "</span></button>").join("") +
+    '<p class="subtle hidden" data-quick-search-empty>No exercises match your search.</p>', true);
 }
 function trackingOptions(selected) {
   return ["weight_reps","reps_only","duration","distance","height","power","conditioning","custom"].map((type) => '<option value="' + type + '"' + (type === selected ? " selected" : "") + ">" + type.replace("_"," + ") + "</option>").join("");
@@ -963,8 +1071,46 @@ async function eventAction(action, element) {
   if (action === "change-athlete") { localStorage.removeItem(athleteKey); state.athlete = null; return athleteTeamPicker(); }
   if (action === "change-age-group") { clearAthleteAgeGroup(); return athleteAccess(); }
   if (action === "calendar-prev" || action === "calendar-next") {
-    const month = validMonth(route().params.get("month"));
-    return go((element.dataset.calendarRoute || "profile") + "?month=" + shiftMonth(month, action === "calendar-prev" ? -1 : 1));
+    const params = route().params;
+    const month = validMonth(params.get("month"));
+    params.set("month", shiftMonth(month, action === "calendar-prev" ? -1 : 1));
+    return go((element.dataset.calendarRoute || "profile") + "?" + params.toString());
+  }
+  if (action === "reset-dashboard-filters") return go("coach/dashboard?month=" + validMonth(route().params.get("month")));
+  if (action === "sessions-page") return go(sessionsUrl(route().params, {page: element.dataset.page}));
+  if (action === "dup-select-week") {
+    const week = weekBounds(state.duplicate.sourceStart || day());
+    state.duplicate.sourceStart = week.start; state.duplicate.sourceEnd = week.end;
+    state.duplicate.preview = null; state.duplicate.error = "";
+    return renderDuplicatePeriod();
+  }
+  if (action === "dup-preview") {
+    const d = state.duplicate;
+    try {
+      d.error = "";
+      d.preview = await previewDuplication(d.sourceStart, d.sourceEnd, d.destinationStart, coachToken());
+      d.excluded = new Set();
+    } catch (error) { d.error = error.message; d.preview = null; }
+    return renderDuplicatePeriod();
+  }
+  if (action === "dup-confirm") {
+    const d = state.duplicate;
+    if (d.busy) return;
+    d.busy = true; renderDuplicatePeriod();
+    try {
+      d.result = await duplicateTrainingPeriod(d.sourceStart, d.sourceEnd, d.destinationStart, d.conflictMode, [...d.excluded], d.destinationTeamId || null, coachToken());
+      d.preview = null;
+    } catch (error) { d.error = error.message; } finally { d.busy = false; }
+    return renderDuplicatePeriod();
+  }
+  if (action === "dup-cancel") { state.duplicate.preview = null; state.duplicate.error = ""; return renderDuplicatePeriod(); }
+  if (action === "dup-reset") { state.duplicate = null; return coachDuplicatePeriod(); }
+  if (action === "pick-combo") {
+    const combo = element.closest("[data-combo]");
+    combo.querySelector("[data-combo-value]").value = element.dataset.id;
+    combo.querySelector("[data-combo-search]").value = element.dataset.label;
+    combo.querySelector("[data-combo-list]").hidden = true;
+    return;
   }
   if (action === "open-calendar-session") {
     if (element.dataset.log) return go("workout/" + element.dataset.log);
@@ -1046,10 +1192,15 @@ document.addEventListener("input", (event) => {
     try { localStorage.setItem('cbi-feedback-' + feedbackForm.dataset.log, JSON.stringify({rpe:values.get('rpe'),notes:values.get('notes')})); }
     catch { feedbackForm.querySelector('[data-submit-status]').textContent = 'Keep this page open: device storage is unavailable.'; }
   }
-  if (event.target.id === "exercise-search") {
+  if (event.target.matches("[data-quick-search]")) {
     const search = event.target.value.trim().toLowerCase();
-    document.querySelectorAll("[data-exercise-card]").forEach((card) => card.classList.toggle("hidden", !card.dataset.search.includes(search)));
+    const cards = document.querySelectorAll(event.target.dataset.quickSearch);
+    cards.forEach((card) => card.classList.toggle("hidden", !card.dataset.search.includes(search)));
+    const empty = event.target.parentElement.querySelector("[data-quick-search-empty]");
+    if (empty) empty.classList.toggle("hidden", [...cards].some((card) => !card.classList.contains("hidden")));
   }
+  const comboInput = event.target.closest("[data-combo-search]");
+  if (comboInput) filterCombo(comboInput);
   if (event.target.matches("[data-builder-name],[data-builder-description]")) {
     const form = event.target.closest('[data-form="builder"]');
     const type = form?.querySelector("[data-session-type]");
@@ -1060,10 +1211,36 @@ document.addEventListener("input", (event) => {
 });
 document.addEventListener("change", (event) => {
   if (event.target.matches("[data-session-type]")) event.target.dataset.manual = "true";
+  if (event.target.matches("[data-dashboard-filter]")) {
+    return go(dashboardFilterUrl("coach/dashboard", route().params, {[event.target.dataset.dashboardFilter]: event.target.value, month: route().params.get("month")}));
+  }
+  if (event.target.matches("[data-session-filter]")) return go(sessionsUrl(route().params, {filter: event.target.value, page: null}));
+  if (event.target.matches("[data-session-filter-start]")) return go(sessionsUrl(route().params, {start: event.target.value, page: null}));
+  if (event.target.matches("[data-session-filter-end]")) return go(sessionsUrl(route().params, {end: event.target.value, page: null}));
+  const dupField = event.target.closest("[data-dup]");
+  if (dupField && state.duplicate) {
+    state.duplicate[dupField.dataset.dup] = dupField.value;
+    state.duplicate.preview = null; state.duplicate.error = "";
+    return renderDuplicatePeriod();
+  }
+  const dupExclude = event.target.closest("[data-dup-exclude]");
+  if (dupExclude && state.duplicate) {
+    if (dupExclude.checked) state.duplicate.excluded.delete(dupExclude.value);
+    else state.duplicate.excluded.add(dupExclude.value);
+  }
+});
+document.addEventListener("focusin", (event) => {
+  const comboInput = event.target.closest("[data-combo-search]");
+  if (comboInput) filterCombo(comboInput);
 });
 document.addEventListener("focusout", (event) => {
   const input = event.target.closest("[data-set-input]");
   if (input) scheduleSave(input.closest("[data-set-row]"), true);
+  const comboInput = event.target.closest("[data-combo-search]");
+  if (comboInput) {
+    const list = comboInput.closest("[data-combo]").querySelector("[data-combo-list]");
+    setTimeout(() => { list.hidden = true; }, 150);
+  }
 });
 document.addEventListener("submit", (event) => {
   const form = event.target;
@@ -1171,6 +1348,7 @@ async function render() {
       if (pieces[1] === "dashboard") return await coachDashboard();
       if (pieces[1] === "access-code" || pieces[1] === "access-codes") return coachAccessCodes();
       if (pieces[1] === "sessions") return await coachSessions();
+      if (pieces[1] === "duplicate-period") return await coachDuplicatePeriod();
       if (pieces[1] === "review") return await coachReview(pieces[2]);
       if (pieces[1] === "log") return await coachLogDetail(pieces[2]);
       if (pieces[1] === "session") {

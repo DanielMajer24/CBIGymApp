@@ -49,7 +49,10 @@ async function rest(tx, table, url, method, body) {
   const select = query.get('select') || '*';
   for (const row of rows) {
     for (const [relation, column] of [['teams','team_id'],['profiles','athlete_id'],['programmed_sessions','session_id']]) {
-      if (select.includes(relation+'(') || select.includes(relation+'!')) row[relation] = (await tx.query(`select * from ${relation} where id=$1`,[row[column]])).rows[0] || null;
+      if (select.includes(relation+'(') || select.includes(relation+'!')) {
+        const fk = row[column] !== undefined ? row[column] : row.assigned_team_id;
+        row[relation] = (await tx.query(`select * from ${relation} where id=$1`,[fk])).rows[0] || null;
+      }
     }
     if (select.includes('session_assignments(')) {
       row.session_assignments = (await tx.query('select * from session_assignments where session_id=$1',[row.id])).rows;
@@ -60,6 +63,10 @@ async function rest(tx, table, url, method, body) {
     const start=query.get('programmed_sessions.session_date').slice(4);
     const end=query.get('programmed_sessions.and')?.match(/lte\.([^)]*)/)?.[1];
     rows=rows.filter(r=>r.programmed_sessions?.session_date >= start && (!end || r.programmed_sessions.session_date <= end));
+  }
+  if (table==='session_assignments' && query.has('teams.age_group')) {
+    const ageGroup=query.get('teams.age_group').slice(3);
+    rows=rows.filter(r=>r.teams?.age_group===ageGroup);
   }
   return rows;
 }
@@ -87,7 +94,9 @@ const server = http.createServer(async (req,res) => {
       const value=await asUser(db,user,async tx=>{
         if(url.pathname.includes('/rpc/')) {
           const name=url.pathname.split('/').at(-1), args=Object.entries(body || {});
-          return (await tx.query(`select * from public.${quote(name)}(${args.map(([key],i)=>`${quote(key)} := $${i+1}`).join(',')})`,args.map(([,v])=>typeof v==='object' && v!==null?JSON.stringify(v):v))).rows;
+          // p_exclude_session_ids is a native uuid[] parameter; every other object/array argument here is jsonb.
+          const bind=([key,v])=>key==='p_exclude_session_ids'?'{'+(v||[]).join(',')+'}':typeof v==='object' && v!==null?JSON.stringify(v):v;
+          return (await tx.query(`select * from public.${quote(name)}(${args.map(([key],i)=>`${quote(key)} := $${i+1}`).join(',')})`,args.map(bind))).rows;
         }
         return rest(tx,url.pathname.split('/').at(-1),url,req.method,body);
       });

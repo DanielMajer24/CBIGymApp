@@ -207,25 +207,63 @@ export async function saveWorkout(log, sets, complete, rpe, notes, token) {
   return saved;
 }
 
-export async function getTeamCalendar(startDate, endDate, token) {
+async function matchingSessionIds(startDate, endDate, { teamId, ageGroup } = {}, token) {
+  if (!teamId && !ageGroup) return null;
+  const params = {
+    select: "session_id,programmed_sessions!session_assignments_session_id_fkey!inner(session_date),teams!inner(age_group)",
+    "programmed_sessions.session_date": `gte.${startDate}`,
+    "programmed_sessions.and": `(session_date.lte.${endDate})`,
+  };
+  if (teamId) params.assigned_team_id = `eq.${teamId}`;
+  if (ageGroup) params["teams.age_group"] = `eq.${ageGroup}`;
+  const rows = await db.list("session_assignments", params, token);
+  return new Set(rows.map(row => row.session_id));
+}
+
+export async function getTeamCalendar(startDate, endDate, token, filters = {}) {
   // Bounded month query, paginated so large schedules aren't silently truncated.
+  // Team/age-group filtering is resolved separately against session_assignments
+  // (database-side) so unfiltered callers still see unassigned sessions.
+  const matching = await matchingSessionIds(startDate, endDate, filters, token);
   const sessions = [];
   for (let offset = 0; ; offset += 200) {
     const page = await db.list("programmed_sessions", {
-      select: "id,name,session_date,session_type,description,session_assignments(assigned_team_id,teams(id,name,age_group))",
+      select: "id,name,session_date,session_type,description,estimated_duration_minutes,session_assignments(assigned_team_id,teams(id,name,age_group))",
       session_date: `gte.${startDate}`, and: `(session_date.lte.${endDate})`,
       order: "session_date.asc,id.asc", limit: "200", offset,
     }, token);
     sessions.push(...page);
-    if (page.length < 200) return sessions.map(session => {
-      const teams = new Map();
-      for (const assignment of session.session_assignments || []) {
-        const team = Array.isArray(assignment.teams) ? assignment.teams[0] : assignment.teams;
-        if (team) teams.set(team.id, team);
-      }
-      return { session, teams: [...teams.values()], coach: true };
-    });
+    if (page.length < 200) break;
   }
+  return sessions.filter(session => !matching || matching.has(session.id)).map(session => {
+    const teams = new Map();
+    for (const assignment of session.session_assignments || []) {
+      const team = Array.isArray(assignment.teams) ? assignment.teams[0] : assignment.teams;
+      if (team) teams.set(team.id, team);
+    }
+    return { session, teams: [...teams.values()], coach: true };
+  });
+}
+
+export async function getSessionsPage({ startDate, endDate, page = 0, pageSize = 20 } = {}, token) {
+  const params = { select: "*", order: "session_date.desc,id.desc", limit: String(pageSize + 1), offset: String(page * pageSize) };
+  if (startDate) params.session_date = `gte.${startDate}`;
+  if (endDate) params.and = `(session_date.lte.${endDate})`;
+  const rows = await db.list("programmed_sessions", params, token);
+  return { sessions: rows.slice(0, pageSize), hasMore: rows.length > pageSize };
+}
+
+export function previewDuplication(sourceStart, sourceEnd, destinationStart, token) {
+  return db.rpc("preview_training_period_duplication", {
+    p_source_start: sourceStart, p_source_end: sourceEnd, p_destination_start: destinationStart,
+  }, token);
+}
+
+export function duplicateTrainingPeriod(sourceStart, sourceEnd, destinationStart, conflictMode, excludeSessionIds, destinationTeamId, token) {
+  return db.rpc("duplicate_training_period", {
+    p_source_start: sourceStart, p_source_end: sourceEnd, p_destination_start: destinationStart,
+    p_conflict_mode: conflictMode, p_exclude_session_ids: excludeSessionIds || [], p_destination_team_id: destinationTeamId || null,
+  }, token);
 }
 
 export function getPreviousSets(athleteId, exerciseId, currentLogId, token) {
