@@ -110,6 +110,15 @@ and production application addresses in Authentication → URL Configuration.
 
 ## Development checks
 
+Staging feature validation and independent review instructions are in
+`docs/STAGING_IMPLEMENTATION.md`, `docs/STAGING_UI_TEST_RESULTS.md`, and
+`docs/CLAUDE_CODE_REVIEW_HANDOFF.md`. Run `npm ci`, `npm test` and `npm run test:ui`
+for isolated synthetic SQL/browser tests; these do not connect to Supabase.
+Chrome is required by the browser configuration. For real staging, configure
+the ignored `.env.staging` from `.env.staging.example`, run `npm run staging:check`,
+then `npm run staging:serve`. This preview deliberately ignores `.env` and
+`web/app-config.js`. Hosted staging isolation still needs independent verification.
+
 Run the static checks with:
 
     node --test tests

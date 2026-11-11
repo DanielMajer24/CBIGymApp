@@ -1,0 +1,162 @@
+{
+  "config": {
+    "argv": [
+      "/opt/homebrew/Cellar/node/26.8.2/bin/node",
+      "/Users/dmaje23/Documents/dev/CBIGymApp/node_modules/.bin/playwright",
+      "test",
+      "tests/ui/baseline.spec.mjs"
+    ],
+    "configFile": "/Users/dmaje23/Documents/dev/CBIGymApp/playwright.config.mjs",
+    "rootDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/dmaje23/Documents/dev/CBIGymApp/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/Users/dmaje23/Documents/dev/CBIGymApp/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "",
+        "testDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+        "snapshotDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://127.0.0.1:4173",
+          "channel": "chrome",
+          "headless": true,
+          "serviceWorkers": "block",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "screenshot": "only-on-failure"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": ""
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "docs/test-evidence/baseline-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.65.0",
+    "workers": 1,
+    "webServer": {
+      "command": "node tests/support/server.mjs",
+      "url": "http://127.0.0.1:4173",
+      "reuseExistingServer": false
+    }
+  },
+  "suites": [
+    {
+      "title": "baseline.spec.mjs",
+      "file": "baseline.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "baseline submission, completed lock, Coaches redirect and dashboard",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3959,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T02:41:24.308Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "baseline",
+                      "contentType": "application/json",
+                      "body": "eyJlbnZpcm9ubWVudCI6Ikxvb3BiYWNrIENocm9tZSArIFBHbGl0ZTsgc3ludGhldGljIEF1dGgvUkVTVCBhZGFwdGVyLCBub3QgaG9zdGVkIHN0YWdpbmciLCJzZXRzIjo2LCJleGVyY2lzZXMiOjIsImluamVjdGVkV3JpdGVMYXRlbmN5TXMiOjgwLCJmaW5pc2hUb01vZGFsTXMiOjgxNS42NjIwODMwMDAwMDAyLCJmaW5pc2hUb1N1Y2Nlc3NNcyI6MTYzNy40Mzk4NzUsIndyaXRlUmVxdWVzdHMiOjE1LCJ3cml0ZVJlc3BvbnNlTXMiOls4NC4wMjYyOTIwMDAwMDAwMSw4My40ODkzNzUwMDAwMDAxMSw4My44MjU0MTcwMDAwMDAwMiw4Mi45OTY3OTE5OTk5OTk5MSw4Mi41NTE3OTIwMDAwMDAyLDgyLjgyMDA4MzAwMDAwMDA3LDgzLjc4MjE2NTk5OTk5OTk2LDg0LjAyMTgzMjk5OTk5OTc5LDg1LjEzMjcwODk5OTk5OTUyLDg0LjE1NjMzNDAwMDAwMDI0LDgzLjYyOTgzNDAwMDAwMDMsODQuMzUwMTY3MDAwMDAwNTEsODQuMDY4MDAwMDAwMDAwMjEsODIuMDM3ODMzMDAwMDAwMzIsODIuNzcxNTAwMDAwMDAwNzRdLCJjb2FjaGVzUmVkaXJlY3QiOnRydWUsImNvbXBsZXRlZEVkaXRpbmciOmZhbHNlLCJkYXNoYm9hcmRDYWxlbmRhciI6ZmFsc2V9"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f5348ad6fd3bc6ff7374-f8b95aaa8301114c0ab2",
+          "file": "baseline.spec.mjs",
+          "line": 4,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-11T02:41:23.274Z",
+    "duration": 5318.307,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

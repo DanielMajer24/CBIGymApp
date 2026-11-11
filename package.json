@@ -3,6 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests"
+    "test": "node --test tests/*.test.mjs",
+    "test:ui": "playwright test --grep-invert baseline",
+    "staging:check": "node scripts/staging-server.mjs --check",
+    "staging:serve": "node scripts/staging-server.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@playwright/test": "^1.65.0"
   }
 }

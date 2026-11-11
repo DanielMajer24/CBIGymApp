@@ -1,0 +1,62 @@
+{
+  "environment": "Loopback Chrome + PostgreSQL (PGlite); Auth/REST adapter, NOT hosted staging",
+  "sets": 6,
+  "enteredSets": 2,
+  "exercises": 2,
+  "injectedWriteLatencyMs": 80,
+  "finishToModalMs": 26.09329200000002,
+  "finishToSuccessMs": 324.18445900000006,
+  "submitToDatabaseResponseMs": 115.7289579999997,
+  "submitToSuccessMs": 298.0910829999998,
+  "writeRequests": 1,
+  "requests": [
+    {
+      "path": "/rest/v1/rpc/save_workout",
+      "method": "POST",
+      "ms": 83.76004199999988,
+      "sqlMs": 2.4371250000003783
+    },
+    {
+      "path": "/rest/v1/profiles",
+      "method": "GET",
+      "ms": 1.1384170000001177,
+      "sqlMs": 1.025749999999789
+    },
+    {
+      "path": "/rest/v1/athlete_teams",
+      "method": "GET",
+      "ms": 1.5157079999999041,
+      "sqlMs": 1.4177920000001905
+    },
+    {
+      "path": "/rest/v1/workout_logs",
+      "method": "GET",
+      "ms": 1.1146669999998267,
+      "sqlMs": 1.0082089999996242
+    },
+    {
+      "path": "/rest/v1/workout_exercises",
+      "method": "GET",
+      "ms": 1.3051660000000993,
+      "sqlMs": 1.2442080000000715
+    },
+    {
+      "path": "/rest/v1/set_logs",
+      "method": "GET",
+      "ms": 1.5145419999998921,
+      "sqlMs": 1.4251250000006621
+    },
+    {
+      "path": "/rest/v1/rpc/last_exercise_sets",
+      "method": "POST",
+      "ms": 81.60325000000012,
+      "sqlMs": 1.5285830000002534
+    },
+    {
+      "path": "/rest/v1/rpc/last_exercise_sets",
+      "method": "POST",
+      "ms": 82.22962499999994,
+      "sqlMs": 1.1529579999996713
+    }
+  ]
+}

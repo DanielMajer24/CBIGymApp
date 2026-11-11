@@ -4,6 +4,27 @@ Run schema.sql and then seed.sql in a new Supabase project. The legacy
 Streamlit tables are structurally incompatible with this application, so a
 separate project is the lowest-risk migration path.
 
+For this staging feature branch, fresh installations also require
+`migrations/008_atomic_workout_save.sql` and
+`migrations/009_coaches_training_group.sql` after `schema.sql`. Existing databases
+already at migration 007 apply only 008 and 009. Do not rerun historical roster
+migrations over the current schema. No new tables are added by these changes.
+See `docs/STAGING_IMPLEMENTATION.md` for review and rollout limitations. These
+migrations have not been applied to a hosted staging or production project.
+
+Coaches training participants use ordinary athlete profiles in an ordinary team
+whose training group is `Coaches`. Create/edit that team, assign participant
+profiles, set the Coaches code in Dashboard → Athlete entry codes, and schedule
+sessions normally. Supabase coach accounts remain separate administration
+identities; the Coaches PIN grants no management role. Group codes are shared by
+teams in the same group, preserving the existing U12–U18 behaviour.
+
+New clients save actual results with `save_workout`, including completion and
+completed-result edits in one transaction. The existing unique keys prevent
+duplicate logs and sets; the header `updated_at` detects competing new-client
+saves. Completed sets remain denied through direct table policies. Prescription
+snapshots and original completion timestamps do not change on result edits.
+
 For an already deployed CBI High Performance database, run each numbered file in
 migrations/ once, in order. Run 004_add_session_type.sql before its matching
 frontend so session colour types and workout snapshots exist, then run
