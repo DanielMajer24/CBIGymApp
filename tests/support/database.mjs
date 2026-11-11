@@ -14,7 +14,7 @@ export async function createDatabase({ migrated = true } = {}) {
     grant execute on function auth.uid() to anon, authenticated;`);
   await db.exec(await readFile(new URL('../../supabase/schema.sql', import.meta.url), 'utf8'));
   if (migrated) {
-    for (const file of ['008_atomic_workout_save.sql', '009_coaches_training_group.sql']) {
+    for (const file of ['008_atomic_workout_save.sql', '009_coaches_training_group.sql', '010_training_period_duplication.sql']) {
       try { await db.exec(await readFile(new URL(`../../supabase/migrations/${file}`, import.meta.url), 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
     }

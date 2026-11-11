@@ -103,6 +103,184 @@
   },
   "suites": [
     {
+      "title": "new-features.spec.mjs",
+      "file": "new-features.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "exercise search combobox narrows by partial match and keeps the chosen exercise on save",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2036,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T10:04:18.250Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9d917def83a97ec0f5a5-13b06c7f563281279877",
+          "file": "new-features.spec.mjs",
+          "line": 16,
+          "column": 1
+        },
+        {
+          "title": "template search filters the template list by partial, case-insensitive name",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1505,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T10:04:20.553Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9d917def83a97ec0f5a5-00501663f3ad2096fc9f",
+          "file": "new-features.spec.mjs",
+          "line": 37,
+          "column": 1
+        },
+        {
+          "title": "dashboard team and age-group filters narrow the calendar and today's sessions, independently of each other",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1062,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T10:04:22.069Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9d917def83a97ec0f5a5-de047b43d948a0fe501d",
+          "file": "new-features.spec.mjs",
+          "line": 54,
+          "column": 1
+        },
+        {
+          "title": "session management: default and last-30-days filters, plus prev/next pagination controls",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 869,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T10:04:23.137Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9d917def83a97ec0f5a5-854424b5ac9a226ffb37",
+          "file": "new-features.spec.mjs",
+          "line": 69,
+          "column": 1
+        },
+        {
+          "title": "duplicate training period: preview, confirm, calendar reflects the copy, and editing it leaves the original untouched",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1394,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T10:04:24.012Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9d917def83a97ec0f5a5-73c278be4d6c5a441b08",
+          "file": "new-features.spec.mjs",
+          "line": 83,
+          "column": 1
+        }
+      ]
+    },
+    {
       "title": "workflows.spec.mjs",
       "file": "workflows.spec.mjs",
       "column": 0,
@@ -124,18 +302,18 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4379,
+                  "duration": 3581,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:12.731Z",
+                  "startTime": "2026-11-11T10:04:25.421Z",
                   "annotations": [],
                   "attachments": [
                     {
                       "name": "performance",
                       "contentType": "application/json",
-                      "body": "eyJlbnZpcm9ubWVudCI6Ikxvb3BiYWNrIENocm9tZSArIFBvc3RncmVTUUwgKFBHbGl0ZSk7IEF1dGgvUkVTVCBhZGFwdGVyLCBOT1QgaG9zdGVkIHN0YWdpbmciLCJzZXRzIjo2LCJlbnRlcmVkU2V0cyI6MiwiZXhlcmNpc2VzIjoyLCJpbmplY3RlZFdyaXRlTGF0ZW5jeU1zIjo4MCwiZmluaXNoVG9Nb2RhbE1zIjoyNi4wOTMyOTIwMDAwMDAwMiwiZmluaXNoVG9TdWNjZXNzTXMiOjMyNC4xODQ0NTkwMDAwMDAwNiwic3VibWl0VG9EYXRhYmFzZVJlc3BvbnNlTXMiOjExNS43Mjg5NTc5OTk5OTk3LCJzdWJtaXRUb1N1Y2Nlc3NNcyI6Mjk4LjA5MTA4Mjk5OTk5OTgsIndyaXRlUmVxdWVzdHMiOjEsInJlcXVlc3RzIjpbeyJwYXRoIjoiL3Jlc3QvdjEvcnBjL3NhdmVfd29ya291dCIsIm1ldGhvZCI6IlBPU1QiLCJtcyI6ODMuNzYwMDQxOTk5OTk5ODgsInNxbE1zIjoyLjQzNzEyNTAwMDAwMDM3ODN9LHsicGF0aCI6Ii9yZXN0L3YxL3Byb2ZpbGVzIiwibWV0aG9kIjoiR0VUIiwibXMiOjEuMTM4NDE3MDAwMDAwMTE3Nywic3FsTXMiOjEuMDI1NzQ5OTk5OTk5Nzg5fSx7InBhdGgiOiIvcmVzdC92MS9hdGhsZXRlX3RlYW1zIiwibWV0aG9kIjoiR0VUIiwibXMiOjEuNTE1NzA3OTk5OTk5OTA0MSwic3FsTXMiOjEuNDE3NzkyMDAwMDAwMTkwNX0seyJwYXRoIjoiL3Jlc3QvdjEvd29ya291dF9sb2dzIiwibWV0aG9kIjoiR0VUIiwibXMiOjEuMTE0NjY2OTk5OTk5ODI2Nywic3FsTXMiOjEuMDA4MjA4OTk5OTk5NjI0Mn0seyJwYXRoIjoiL3Jlc3QvdjEvd29ya291dF9leGVyY2lzZXMiLCJtZXRob2QiOiJHRVQiLCJtcyI6MS4zMDUxNjYwMDAwMDAwOTkzLCJzcWxNcyI6MS4yNDQyMDgwMDAwMDAwNzE1fSx7InBhdGgiOiIvcmVzdC92MS9zZXRfbG9ncyIsIm1ldGhvZCI6IkdFVCIsIm1zIjoxLjUxNDU0MTk5OTk5OTg5MjEsInNxbE1zIjoxLjQyNTEyNTAwMDAwMDY2MjF9LHsicGF0aCI6Ii9yZXN0L3YxL3JwYy9sYXN0X2V4ZXJjaXNlX3NldHMiLCJtZXRob2QiOiJQT1NUIiwibXMiOjgxLjYwMzI1MDAwMDAwMDEyLCJzcWxNcyI6MS41Mjg1ODMwMDAwMDAyNTM0fSx7InBhdGgiOiIvcmVzdC92MS9ycGMvbGFzdF9leGVyY2lzZV9zZXRzIiwibWV0aG9kIjoiUE9TVCIsIm1zIjo4Mi4yMjk2MjQ5OTk5OTk5NCwic3FsTXMiOjEuMTUyOTU3OTk5OTk5NjcxM31dfQ=="
+                      "body": "eyJlbnZpcm9ubWVudCI6Ikxvb3BiYWNrIENocm9tZSArIFBvc3RncmVTUUwgKFBHbGl0ZSk7IEF1dGgvUkVTVCBhZGFwdGVyLCBOT1QgaG9zdGVkIHN0YWdpbmciLCJzZXRzIjo2LCJlbnRlcmVkU2V0cyI6MiwiZXhlcmNpc2VzIjoyLCJpbmplY3RlZFdyaXRlTGF0ZW5jeU1zIjo4MCwiZmluaXNoVG9Nb2RhbE1zIjoyMS4wNjk2MjUwMDAwMDAwODcsImZpbmlzaFRvU3VjY2Vzc01zIjozMjMuMjE1MDQxOTk5OTk5OCwic3VibWl0VG9EYXRhYmFzZVJlc3BvbnNlTXMiOjExNy41ODMwODI5OTk5OTk1Mywic3VibWl0VG9TdWNjZXNzTXMiOjMwMi4xNDU2MjUwMDAwMDEsIndyaXRlUmVxdWVzdHMiOjEsInJlcXVlc3RzIjpbeyJwYXRoIjoiL3Jlc3QvdjEvcnBjL3NhdmVfd29ya291dCIsIm1ldGhvZCI6IlBPU1QiLCJtcyI6ODQuNTEwNTQxOTk5OTk5OTksInNxbE1zIjoyLjI2NTE2Njk5OTk5OTU2NDd9LHsicGF0aCI6Ii9yZXN0L3YxL3Byb2ZpbGVzIiwibWV0aG9kIjoiR0VUIiwibXMiOjEuMDI1MzMzOTk5OTk5OTI5OCwic3FsTXMiOjAuOTM4ODc0OTk5OTk5ODI1NH0seyJwYXRoIjoiL3Jlc3QvdjEvYXRobGV0ZV90ZWFtcyIsIm1ldGhvZCI6IkdFVCIsIm1zIjowLjYxMTc5MTk5OTk5OTY5NTcsInNxbE1zIjowLjU2NDA4Mjk5OTk5OTMwMDJ9LHsicGF0aCI6Ii9yZXN0L3YxL3dvcmtvdXRfbG9ncyIsIm1ldGhvZCI6IkdFVCIsIm1zIjowLjY5MjYyNDk5OTk5OTY3OTksInNxbE1zIjowLjYzODY2NzAwMDAwMTA3ODF9LHsicGF0aCI6Ii9yZXN0L3YxL3dvcmtvdXRfZXhlcmNpc2VzIiwibWV0aG9kIjoiR0VUIiwibXMiOjAuNTc5NDU5MDAwMDAwNDk3Mywic3FsTXMiOjAuNTM3NTgyOTk5OTk5MzU4NH0seyJwYXRoIjoiL3Jlc3QvdjEvc2V0X2xvZ3MiLCJtZXRob2QiOiJHRVQiLCJtcyI6MC41NzU3NDk5OTk5OTk5NzA5LCJzcWxNcyI6MC41MzE1NDIwMDAwMDA2Mjd9LHsicGF0aCI6Ii9yZXN0L3YxL3JwYy9sYXN0X2V4ZXJjaXNlX3NldHMiLCJtZXRob2QiOiJQT1NUIiwibXMiOjgyLjM2NjY2NTk5OTk5OTksInNxbE1zIjowLjg0NzEyNDk5OTk5ODQxMzh9LHsicGF0aCI6Ii9yZXN0L3YxL3JwYy9sYXN0X2V4ZXJjaXNlX3NldHMiLCJtZXRob2QiOiJQT1NUIiwibXMiOjgyLjU0OTAwMDAwMDAwMDg5LCJzcWxNcyI6MC41MzA4MzI5OTk5OTg4OTI4fV19"
                     }
                   ]
                 }
@@ -164,12 +342,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4973,
+                  "duration": 4939,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:17.421Z",
+                  "startTime": "2026-11-11T10:04:29.006Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -198,12 +376,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 3184,
+                  "duration": 3112,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:22.402Z",
+                  "startTime": "2026-11-11T10:04:33.951Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -232,12 +410,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1725,
+                  "duration": 1573,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:25.592Z",
+                  "startTime": "2026-11-11T10:04:37.068Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -266,12 +444,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 5916,
+                  "duration": 5903,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:27.322Z",
+                  "startTime": "2026-11-11T10:04:38.647Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -300,12 +478,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6299,
+                  "duration": 6303,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:33.244Z",
+                  "startTime": "2026-11-11T10:04:44.556Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -334,12 +512,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 5727,
+                  "duration": 5630,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:39.551Z",
+                  "startTime": "2026-11-11T10:04:50.865Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -368,12 +546,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1909,
+                  "duration": 1880,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:45.284Z",
+                  "startTime": "2026-11-11T10:04:56.501Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -402,12 +580,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 17115,
+                  "duration": 17078,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T06:35:47.199Z",
+                  "startTime": "2026-11-11T10:04:58.386Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -425,9 +603,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-11T06:35:11.679Z",
-    "duration": 52702.019,
-    "expected": 9,
+    "startTime": "2026-11-11T10:04:17.201Z",
+    "duration": 58337.445999999996,
+    "expected": 14,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
