@@ -1,0 +1,435 @@
+{
+  "config": {
+    "argv": [
+      "/opt/homebrew/Cellar/node/26.8.2/bin/node",
+      "/Users/dmaje23/Documents/dev/CBIGymApp/node_modules/.bin/playwright",
+      "test",
+      "--grep-invert",
+      "baseline"
+    ],
+    "configFile": "/Users/dmaje23/Documents/dev/CBIGymApp/playwright.config.mjs",
+    "rootDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/dmaje23/Documents/dev/CBIGymApp/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/Users/dmaje23/Documents/dev/CBIGymApp/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "",
+        "testDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+        "snapshotDir": "/Users/dmaje23/Documents/dev/CBIGymApp/tests/ui",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://127.0.0.1:4173",
+          "channel": "chrome",
+          "headless": true,
+          "serviceWorkers": "block",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "screenshot": "only-on-failure"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": ""
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "docs/test-evidence/ui-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.65.0",
+    "workers": 1,
+    "webServer": {
+      "command": "node tests/support/server.mjs",
+      "url": "http://127.0.0.1:4173",
+      "reuseExistingServer": false
+    }
+  },
+  "suites": [
+    {
+      "title": "workflows.spec.mjs",
+      "file": "workflows.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "athlete: measured submit, refresh, edit weights/reps/time/feedback and persistence",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4379,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:12.731Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "performance",
+                      "contentType": "application/json",
+                      "body": "eyJlbnZpcm9ubWVudCI6Ikxvb3BiYWNrIENocm9tZSArIFBvc3RncmVTUUwgKFBHbGl0ZSk7IEF1dGgvUkVTVCBhZGFwdGVyLCBOT1QgaG9zdGVkIHN0YWdpbmciLCJzZXRzIjo2LCJlbnRlcmVkU2V0cyI6MiwiZXhlcmNpc2VzIjoyLCJpbmplY3RlZFdyaXRlTGF0ZW5jeU1zIjo4MCwiZmluaXNoVG9Nb2RhbE1zIjoyNi4wOTMyOTIwMDAwMDAwMiwiZmluaXNoVG9TdWNjZXNzTXMiOjMyNC4xODQ0NTkwMDAwMDAwNiwic3VibWl0VG9EYXRhYmFzZVJlc3BvbnNlTXMiOjExNS43Mjg5NTc5OTk5OTk3LCJzdWJtaXRUb1N1Y2Nlc3NNcyI6Mjk4LjA5MTA4Mjk5OTk5OTgsIndyaXRlUmVxdWVzdHMiOjEsInJlcXVlc3RzIjpbeyJwYXRoIjoiL3Jlc3QvdjEvcnBjL3NhdmVfd29ya291dCIsIm1ldGhvZCI6IlBPU1QiLCJtcyI6ODMuNzYwMDQxOTk5OTk5ODgsInNxbE1zIjoyLjQzNzEyNTAwMDAwMDM3ODN9LHsicGF0aCI6Ii9yZXN0L3YxL3Byb2ZpbGVzIiwibWV0aG9kIjoiR0VUIiwibXMiOjEuMTM4NDE3MDAwMDAwMTE3Nywic3FsTXMiOjEuMDI1NzQ5OTk5OTk5Nzg5fSx7InBhdGgiOiIvcmVzdC92MS9hdGhsZXRlX3RlYW1zIiwibWV0aG9kIjoiR0VUIiwibXMiOjEuNTE1NzA3OTk5OTk5OTA0MSwic3FsTXMiOjEuNDE3NzkyMDAwMDAwMTkwNX0seyJwYXRoIjoiL3Jlc3QvdjEvd29ya291dF9sb2dzIiwibWV0aG9kIjoiR0VUIiwibXMiOjEuMTE0NjY2OTk5OTk5ODI2Nywic3FsTXMiOjEuMDA4MjA4OTk5OTk5NjI0Mn0seyJwYXRoIjoiL3Jlc3QvdjEvd29ya291dF9leGVyY2lzZXMiLCJtZXRob2QiOiJHRVQiLCJtcyI6MS4zMDUxNjYwMDAwMDAwOTkzLCJzcWxNcyI6MS4yNDQyMDgwMDAwMDAwNzE1fSx7InBhdGgiOiIvcmVzdC92MS9zZXRfbG9ncyIsIm1ldGhvZCI6IkdFVCIsIm1zIjoxLjUxNDU0MTk5OTk5OTg5MjEsInNxbE1zIjoxLjQyNTEyNTAwMDAwMDY2MjF9LHsicGF0aCI6Ii9yZXN0L3YxL3JwYy9sYXN0X2V4ZXJjaXNlX3NldHMiLCJtZXRob2QiOiJQT1NUIiwibXMiOjgxLjYwMzI1MDAwMDAwMDEyLCJzcWxNcyI6MS41Mjg1ODMwMDAwMDAyNTM0fSx7InBhdGgiOiIvcmVzdC92MS9ycGMvbGFzdF9leGVyY2lzZV9zZXRzIiwibWV0aG9kIjoiUE9TVCIsIm1zIjo4Mi4yMjk2MjQ5OTk5OTk5NCwic3FsTXMiOjEuMTUyOTU3OTk5OTk5NjcxM31dfQ=="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-827d77b5237a8dd661b2",
+          "file": "workflows.spec.mjs",
+          "line": 28,
+          "column": 1
+        },
+        {
+          "title": "saving feedback, duplicate submit protection, injected failure, retained inputs and retry",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4973,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:17.421Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-ab94255b77aec7e52134",
+          "file": "workflows.spec.mjs",
+          "line": 78,
+          "column": 1
+        },
+        {
+          "title": "Coaches: invalid and valid PIN, standard training, edit, refresh and no admin rights",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3184,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:22.402Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-b461201c1b8301fb8c48",
+          "file": "workflows.spec.mjs",
+          "line": 102,
+          "column": 1
+        },
+        {
+          "title": "dashboard calendar: all teams, details, months, empty dates, refresh and desktop",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1725,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:25.592Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-a88c97f398b8d0057e79",
+          "file": "workflows.spec.mjs",
+          "line": 133,
+          "column": 1
+        },
+        {
+          "title": "different athletes, wrong-profile route and stored drafts after refresh",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5916,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:27.322Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-bdcf4b0a6dd5e11356a7",
+          "file": "workflows.spec.mjs",
+          "line": 156,
+          "column": 1
+        },
+        {
+          "title": "coach regression: exercise, team, athlete, template and session creation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6299,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:33.244Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-9abf22a0eacd7dd3b068",
+          "file": "workflows.spec.mjs",
+          "line": 178,
+          "column": 1
+        },
+        {
+          "title": "two devices: stale completed edits are rejected, reviewed, then explicitly saved",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5727,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:39.551Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-f5112c942362314b8967",
+          "file": "workflows.spec.mjs",
+          "line": 207,
+          "column": 1
+        },
+        {
+          "title": "lost database response: retry confirms the same committed workout without duplicates",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1909,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:45.284Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-bf379236deac04d1acaa",
+          "file": "workflows.spec.mjs",
+          "line": 241,
+          "column": 1
+        },
+        {
+          "title": "hung request times out with retained drafts and permits retry",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 17115,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-11T06:35:47.199Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f0b911d849d7f18a3670-872aef584945bbe02428",
+          "file": "workflows.spec.mjs",
+          "line": 261,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-11-11T06:35:11.679Z",
+    "duration": 52702.019,
+    "expected": 9,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

@@ -1,19 +1,20 @@
 import {
   configured, auth, db, getActiveAthletes, getAthleteTeams, getAssignedSessions,
   getAssignedSessionsInRange, getAssignedSession, getSessionExercises, getWorkout, getWorkoutDetail,
-  startWorkout, saveSet, finishWorkout, getPreviousSets, getExerciseHistory, getWorkoutHistory,
+  startWorkout, saveWorkout, getTeamCalendar, getPreviousSets, getExerciseHistory, getWorkoutHistory,
   getWorkoutLogsInRange, getInProgressWorkouts, getCoachProfile,
   verifyAthleteEntryPin, setAthleteEntryPin,
 } from "./api.js";
 import { athleteFirstName, athleteFullName, athletePickerLabel } from "./names.js";
+import { WorkoutSaver } from "./workout-saver.js";
 
 const root = document.querySelector("#app");
 const athleteKey = "cbi-athlete-id";
 const athleteSessionKey = "cbi-athlete-auth-session";
 const athleteAgeGroupKey = "cbi-athlete-age-group";
 const coachKey = "cbi-coach-session";
-const athleteAgeGroups = ["U12", "U14", "U16", "U18"];
-const state = { athlete: null, athleteTeams: [], athleteAgeGroup: null, athleteSession: null, coachSession: null, coachProfile: null, builder: null, timers: new Map(), saves: new Map(), retryTimer: null };
+const athleteAgeGroups = ["U12", "U14", "U16", "U18", "Coaches"];
+const state = { athlete: null, athleteTeams: [], athleteAgeGroup: null, athleteSession: null, coachSession: null, coachProfile: null, builder: null, saver: null, saveTimer: null, retryTimer: null, submitting: false, editing: false, savedSets: new Map() };
 const SAVE_DEBOUNCE_MS = 600;
 const RETRY_MS = 12000;
 
@@ -162,9 +163,9 @@ function clearAthleteAgeGroup() {
 }
 function athleteAccess(ageGroup, message) {
   if (!validAgeGroup(ageGroup)) {
-    shell('<section class="login"><div class="eyebrow">CBI High Performance</div><h1>Choose your group</h1><p class="subtle">Athletes select an age group, enter its four-digit code, then choose their team and profile.</p><div class="stack">' +
+    shell('<section class="login"><div class="eyebrow">CBI High Performance</div><h1>Choose your group</h1><p class="subtle">Select a training group, enter its four-digit code, then choose your team and profile.</p><div class="stack">' +
       athleteAgeGroups.map((group) => '<button class="list-button" data-action="choose-age-group" data-age-group="' + group + '"><strong>' + group + '</strong><span>›</span></button>').join("") +
-      '<a class="list-button" href="#coach/login"><strong>Coaches</strong><span>›</span></a></div></section>', false);
+      '</div></section>', false);
     return;
   }
   shell('<section class="login card"><div class="eyebrow">' + esc(ageGroup) + ' athlete mode</div><h1>Enter ' + esc(ageGroup) + ' code</h1><p class="subtle">Ask your coach for this age group’s four-digit code.</p>' +
@@ -228,7 +229,7 @@ async function athleteToday() {
     const session = assignment.session;
     const log = await getWorkout(state.athlete.id, session.id, access);
     let action = '<button class="button primary" data-action="start-workout" data-session="' + esc(session.id) + '">Start session</button>';
-    if (log?.status === "completed") action = '<span class="pill lime">Complete</span>';
+    if (log?.status === "completed") action = '<button class="button primary" data-action="open-workout" data-log="' + esc(log.id) + '">View / edit results</button>';
     if (log?.status === "in_progress") action = '<button class="button primary" data-action="open-workout" data-log="' + esc(log.id) + '">Resume session</button>';
     return '<article class="card hero"><div class="eyebrow">Today’s session</div><h1><button class="session-title-link" data-action="open-calendar-session" data-session="' + esc(session.id) + '">' + esc(session.name) + '</button></h1>' +
       '<p class="subtle">' + esc(session.description || "Your coach has programmed this session for you.") + "</p>" +
@@ -242,35 +243,20 @@ async function athleteToday() {
     '<section class="card tight"><div class="split"><div><h3>Training history</h3><p class="subtle">Review your completed sessions.</p></div><a href="#history">History ›</a></div></section>', false);
 }
 function fields(exercise) {
-  const rpe = { key:"rpe", label:"RPE", step:"0.5", min:"0", max:"10" };
-  if (exercise.tracking_type === "weight_reps") return [{key:"load_kg",label:"kg",step:"0.5",min:"0"},{key:"reps",label:"reps",step:"0.5",min:"0"},rpe];
-  if (exercise.tracking_type === "reps_only") return [{key:"reps",label:"reps",step:"0.5",min:"0"},rpe];
-  if (exercise.tracking_type === "duration") return [{key:"duration_seconds",label:"seconds",step:"0.01",min:"0"},rpe];
-  if (exercise.tracking_type === "distance") return [{key:"distance_m",label:"metres",step:"0.01",min:"0"},rpe];
-  if (exercise.tracking_type === "height") return [{key:"height_cm",label:"cm",step:"0.1",min:"0"},rpe];
-  if (exercise.tracking_type === "power") return [{key:"power_watts",label:"watts",step:"1",min:"0"},rpe];
-  return [{key:"value",label:exercise.custom_unit || "result",step:"0.1",min:"0"},rpe];
+  if (exercise.tracking_type === "weight_reps") return [{key:"load_kg",label:"kg",step:"0.5",min:"0"},{key:"reps",label:"reps",step:"0.5",min:"0"}];
+  if (exercise.tracking_type === "reps_only") return [{key:"reps",label:"reps",step:"0.5",min:"0"}];
+  if (exercise.tracking_type === "duration") return [{key:"duration_seconds",label:"seconds",step:"0.01",min:"0"}];
+  if (exercise.tracking_type === "distance") return [{key:"distance_m",label:"metres",step:"0.01",min:"0"}];
+  if (exercise.tracking_type === "height") return [{key:"height_cm",label:"cm",step:"0.1",min:"0"}];
+  if (exercise.tracking_type === "power") return [{key:"power_watts",label:"watts",step:"1",min:"0"}];
+  return [{key:"value",label:exercise.custom_unit || "result",step:"0.1",min:"0"}];
 }
 function draftStore(logId) {
   try { return JSON.parse(localStorage.getItem("cbi-drafts-" + logId) || "{}"); } catch { return {}; }
 }
-function draftPut(logId, record) {
-  const drafts = draftStore(logId);
-  drafts[record.workout_exercise_id + ":" + record.set_number] = record;
-  localStorage.setItem("cbi-drafts-" + logId, JSON.stringify(drafts));
-}
-function draftRemove(logId, record, expected) {
-  const drafts = draftStore(logId);
-  const key = record.workout_exercise_id + ":" + record.set_number;
-  if (JSON.stringify(drafts[key]) === JSON.stringify(expected)) {
-    delete drafts[key];
-    localStorage.setItem("cbi-drafts-" + logId, JSON.stringify(drafts));
-  }
-}
 function startingValue(exercise, field) {
   if (field === "load_kg") return exercise.prescribed_load_kg ?? "";
   if (field === "reps") return exercise.prescribed_reps ?? "";
-  if (field === "rpe") return exercise.target_rpe ?? "";
   return "";
 }
 function formattedSet(set, kind) {
@@ -292,13 +278,13 @@ function supersetMark(group) {
 }
 function setInput(exercise, setNumber, logId, disabled) {
   const saved = exercise.setLogs.find((entry) => entry.set_number === setNumber) || {};
-  const draft = draftStore(logId)[exercise.id + ":" + setNumber] || {};
+  const draft = disabled ? {} : draftStore(logId)[exercise.id + ":" + setNumber] || {};
   const value = { ...saved, ...draft };
   const fieldList = fields(exercise);
   return '<div class="number-row" style="--fields:' + fieldList.length + '" data-set-row data-log="' + esc(logId) + '" data-exercise="' + esc(exercise.id) + '" data-number="' + setNumber + '">' +
     '<div class="set-number">' + setNumber + "</div>" + fieldList.map((field) =>
       '<label><span class="field-label">' + esc(field.label) + '</span><input data-set-input data-field="' + field.key + '" type="number" inputmode="decimal" min="' + field.min + '"' +
-      (field.max ? ' max="' + field.max + '"' : "") + ' step="' + field.step + '" value="' + esc(value[field.key] ?? startingValue(exercise, field.key)) + '"' +
+      (field.max ? ' max="' + field.max + '"' : "") + ' step="' + field.step + '" value="' + esc(field.key in value ? value[field.key] ?? "" : disabled || state.saver?.log.status === "completed" ? "" : startingValue(exercise, field.key)) + '"' +
       (disabled ? " disabled" : "") + ' aria-label="Set ' + setNumber + " " + esc(field.label) + '"></label>').join("") + "</div>";
 }
 function exerciseCard(exercise, previous, logId, done) {
@@ -322,22 +308,38 @@ function workoutCards(exercises, previous, logId, done) {
   }).join("");
 }
 async function athleteWorkout(logId) {
+  clearTimeout(state.saveTimer);
+  stopRetryLoop();
+  if (state.saver) await state.saver.queue;
   const access = athleteToken();
   const workout = await getWorkoutDetail(logId, access);
   if (workout.log.athlete_id !== state.athlete?.id) throw new Error("Select the athlete who owns this workout.");
   const previous = await Promise.all(workout.exercises.map((exercise) => getPreviousSets(state.athlete.id, exercise.exercise_id, logId, access).catch(() => [])));
   const done = workout.log.status === "completed";
-  const head = '<section class="page-head"><div class="split"><div><div class="eyebrow">' + (done ? "Completed session" : "Training now") + "</div><h1>" + esc(workout.log.session_name) + '</h1></div><span id="save-status" class="status saved">Saved ✓</span></div><p class="subtle">' + dateLabel(workout.log.session_date) + (workout.log.estimated_duration_minutes ? " · " + workout.log.estimated_duration_minutes + " min" : "") + "</p></section>";
+  state.editing = done && route().params.get("edit") === "1";
+  state.savedSets = new Map(workout.exercises.flatMap(exercise => exercise.setLogs.map(set => [exercise.id + ':' + set.set_number, set])));
+  state.saver = new WorkoutSaver(workout.log, {storage:localStorage, status:(...args) => { if (currentLogId() === logId) saveStatus(...args); }, save:async (...args) => {
+    // Refresh once when needed during long workouts, not once per set.
+    if (state.athleteSession?.expires_at * 1000 < Date.now() + 60000) saveAthleteSession(await auth.refresh(state.athleteSession.refresh_token));
+    return saveWorkout(...args, athleteToken());
+  }});
+  const head = '<section class="page-head"><div class="split"><div><div class="eyebrow">' + (done ? "Completed session" : "Training now") + "</div><h1>" + esc(workout.log.session_name) + '</h1></div><span id="save-status" role="status" class="status saved">Saved ✓</span></div><p class="subtle">' + dateLabel(workout.log.session_date) + (workout.log.estimated_duration_minutes ? " · " + workout.log.estimated_duration_minutes + " min" : "") + '</p><div id="save-error" class="error-box hidden" role="alert"></div></section>';
   let foot = '<button class="button primary full" data-action="finish-workout" data-log="' + esc(logId) + '">Finish session</button>';
-  if (done) foot = '<article class="card hero"><div class="eyebrow">Session complete ✓</div><h1>Great work.</h1><p class="subtle">' + workout.exercises.filter((item) => item.setLogs.length).length + "/" + workout.exercises.length + " exercises recorded" + (workout.log.session_rpe != null ? " · Session RPE " + workout.log.session_rpe : "") + "</p></article>";
-  shell(head + workoutCards(workout.exercises, previous, logId, done) + foot, false);
-  if (done) { try { localStorage.removeItem("cbi-drafts-" + logId); } catch (error) { console.warn(error); } stopRetryLoop(); }
-  else if (outstandingDrafts(logId).length) pushDrafts(logId).catch(() => {});
+  if (done) foot = state.editing
+    ? '<button class="button primary full" data-action="finish-workout" data-log="' + esc(logId) + '">Save changes</button>'
+    : '<article class="card hero"><div class="eyebrow">Session complete ✓</div><h1>Great work.</h1><p class="subtle">Your results are saved. You can reopen and edit them here.</p><button class="button primary full" data-action="edit-results" data-log="' + esc(logId) + '">Edit results</button></article>';
+  shell(head + workoutCards(workout.exercises, previous, logId, done && !state.editing) + foot, false);
+  // Remember rendered values so focus/blur alone never records untouched sets.
+  document.querySelectorAll('[data-set-row]').forEach(row => { row.dataset.lastValue = JSON.stringify(readSetRow(row)); });
+  if (outstandingDrafts(logId).length) {
+    if (done) saveStatus('Unsaved edits on this device — choose Edit results to save them.', 'saving');
+    else pushDrafts().catch(() => {});
+  }
 }
 async function athleteHistory() {
   if (!state.athlete) return athleteTeamPicker();
   const sessions = await getWorkoutHistory(state.athlete.id, athleteToken());
-  shell('<section class="page-head"><div class="eyebrow">' + esc(athleteFirstName(state.athlete)) + '</div><h1>Training history</h1><p class="subtle">Completed sessions are preserved exactly as performed.</p></section>' +
+  shell('<section class="page-head"><div class="eyebrow">' + esc(athleteFirstName(state.athlete)) + '</div><h1>Training history</h1><p class="subtle">Review or edit your results. The original programme is preserved.</p></section>' +
     (sessions.map((log) => '<button class="list-button" data-action="open-workout" data-log="' + esc(log.id) + '"><span><strong>' + esc(log.session_name) + "</strong><br><span class=\"muted\">" + shortDate(log.session_date) + (log.session_rpe != null ? " · RPE " + log.session_rpe : "") + '</span></span><span class="pill lime">View</span></button>').join("") || empty("Finish a session and it will appear here.")), false);
 }
 const sessionTypes = ["strength", "power", "conditioning", "recovery", "court"];
@@ -364,10 +366,11 @@ function calendarStatus(log, sessionDate) {
   if (log?.status === "in_progress") return "In progress";
   return sessionDate > day() ? "Upcoming" : "Planned";
 }
-function calendarItem(session, log) {
+function calendarItem(session, log, item = {}) {
   const display = log ? {...session, name:log.session_name || session.name, session_type:log.session_type || session.session_type} : session;
   const tone = sessionType(display), status = calendarStatus(log, session.session_date);
-  return '<button class="calendar-session tone-' + tone + '" data-action="open-calendar-session" data-session="' + esc(session.id) + '"' + (log ? ' data-log="' + esc(log.id) + '"' : "") + ' aria-label="Open ' + esc(display.name) + ' on ' + esc(dateLabel(session.session_date)) + '"><span class="calendar-session-title">' + esc(display.name) + '</span><span class="calendar-session-status">' + esc(status) + '</span></button>';
+  const teamNames = item.teams?.map(teamLabel).join(', ') || 'Individual assignments';
+  return '<button class="calendar-session tone-' + tone + '" data-action="' + (item.coach ? 'review-session' : 'open-calendar-session') + '" data-session="' + esc(session.id) + '"' + (log ? ' data-log="' + esc(log.id) + '"' : "") + ' aria-label="Open ' + esc(display.name) + (item.coach ? ' · ' + esc(teamNames) : '') + ' on ' + esc(dateLabel(session.session_date)) + '"><span class="calendar-session-title">' + esc(display.name) + '</span>' + (item.coach ? '<span class="calendar-team">' + esc(teamNames) + '</span>' : '<span class="calendar-session-status">' + esc(status) + '</span>') + '</button>';
 }
 function calendarGrid(month, sessions) {
   const bounds = monthBounds(month), byDate = new Map();
@@ -381,7 +384,7 @@ function calendarGrid(month, sessions) {
     const date = index - bounds.firstWeekday + 1;
     if (date < 1 || date > bounds.days) return '<div class="calendar-day outside" aria-hidden="true"></div>';
     const iso = isoDate(bounds.year, bounds.month, date), items = byDate.get(iso) || [];
-    return '<section class="calendar-day' + (iso === day() ? " is-today" : "") + '"><div class="calendar-date"><span>' + date + '</span>' + (items.length > 1 ? '<span class="calendar-count">' + items.length + '</span>' : "") + '</div><div class="calendar-events">' + items.map((item) => calendarItem(item.session, item.log)).join("") + "</div></section>";
+    return '<section class="calendar-day' + (iso === day() ? " is-today" : "") + '"><div class="calendar-date"><span>' + date + '</span>' + (items.length > 1 ? '<span class="calendar-count">' + items.length + '</span>' : "") + '</div><div class="calendar-events">' + items.map((item) => calendarItem(item.session, item.log, item)).join("") + "</div></section>";
   }).join("");
   return '<div class="calendar-weekdays" aria-hidden="true">' + ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((name) => '<span>' + name + "</span>").join("") + '</div><div class="calendar-grid" role="grid" aria-label="' + esc(monthLabel(month)) + ' training calendar">' + cells + "</div>";
 }
@@ -455,10 +458,12 @@ function coachLogin(message) {
 }
 async function coachDashboard() {
   const access = coachToken();
+  const month = validMonth(route().params.get("month")), bounds = monthBounds(month);
   const results = await Promise.all([
     db.list("programmed_sessions", {select:"*",session_date:"eq." + day(),order:"created_at.desc"}, access),
     getActiveAthletes(access),
     db.list("workout_logs", {select:"id,status",session_date:"eq." + day()}, access),
+    getTeamCalendar(bounds.start, bounds.end, access),
   ]);
   const sessions = results[0], athletes = results[1], logs = results[2], done = logs.filter((log) => log.status === "completed").length;
   const sessionIds = sessions.map((session) => session.id);
@@ -467,11 +472,13 @@ async function coachDashboard() {
   const assignments = sessionIds.length
     ? await db.list("session_assignments", {select:"athlete_id", session_id:`in.(${sessionIds.join(",")})`}, access)
     : [];
-  const assigned = new Set(assignments.map((assignment) => assignment.athlete_id)).size;
+  const assigned = assignments.length;
   shell('<section class="page-head"><div class="eyebrow">Coach dashboard</div><h1>Today</h1><p class="subtle">' + dateLabel(day()) + "</p></section>" +
     '<div class="grid three"><article class="card tight"><div class="metric">' + sessions.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + assigned + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
     '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a></div>' +
-    '<section class="card tight"><div class="split"><div><h2>Athlete entry codes</h2><p class="subtle">Set a separate four-digit code for U12, U14, U16, and U18 athlete mode.</p></div><a class="button small" href="#coach/access-codes">Manage</a></div></section>' +
+    '<section class="card tight"><div class="split"><div><h2>Athlete entry codes</h2><p class="subtle">Manage training codes for ' + athleteAgeGroups.join(', ') + '.</p></div><a class="button small" href="#coach/access-codes">Manage</a></div></section>' +
+    scheduledTrainingsCard(month, results[3], 'coach/dashboard') +
+    '<section class="card"><h2>Scheduled team sessions</h2>' + (results[3].map(item => '<button class="list-button" data-action="review-session" data-session="' + esc(item.session.id) + '"><span><strong>' + esc(item.session.name) + '</strong><br>' + esc(shortDate(item.session.session_date)) + ' · ' + esc(item.teams.map(teamLabel).join(', ') || 'Individual assignments') + '</span><span>›</span></button>').join('') || '<p class="subtle">No sessions scheduled this month.</p>') + '</section>' +
     '<section class="card"><h2>Today’s sessions</h2>' + (sessions.map((session) => '<button class="list-button" data-action="review-session" data-session="' + esc(session.id) + '"><span><strong>' + esc(session.name) + '</strong><br><span class="muted">' + (session.estimated_duration_minutes || "—") + " min · " + esc(session.description || "No description") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No sessions scheduled today.</p>') + "</section>", true);
 }
 function coachAccessCodes() {
@@ -661,7 +668,11 @@ async function deleteTeamModal(teamId, name) {
   modal('<div class="split"><h2>Delete team permanently?</h2><button class="button small ghost" data-action="close-modal">×</button></div><p class="subtle"><strong>' + esc(name) + '</strong> has no athlete memberships or current/future assignments. It will be permanently deleted. This cannot be undone.</p><form data-form="delete-team" data-team="' + esc(teamId) + '" class="stack"><button class="button danger full">Delete permanently</button><button type="button" class="button full ghost" data-action="close-modal">Keep team</button></form>');
 }
 function finishModal(logId) {
-  modal('<div class="eyebrow">Almost done</div><h2>Finish session?</h2><p class="subtle">You can leave feedback blank. Completed workout sets are locked.</p><form data-form="finish" data-log="' + esc(logId) + '" class="stack"><label>Session RPE (optional)<input name="rpe" type="number" min="1" max="10" step=".5" inputmode="decimal"></label><label>Session notes (optional)<textarea name="notes"></textarea></label><button class="button primary full">Complete session</button><button type="button" class="button full ghost" data-action="close-modal">Keep training</button></form>');
+  const saved = state.saver.log;
+  let feedback = {};
+  try { feedback = JSON.parse(localStorage.getItem('cbi-feedback-' + logId) || '{}'); } catch {}
+  const editing = saved.status === 'completed';
+  modal('<div class="eyebrow">' + (editing ? 'Update results' : 'Almost done') + '</div><h2>' + (editing ? 'Save changes?' : 'Finish session?') + '</h2><p class="subtle">Only entered sets are saved. You can leave feedback blank and edit your results later.</p><form data-form="finish" data-log="' + esc(logId) + '" class="stack"><label>Session RPE (optional)<input name="rpe" type="number" min="0" max="10" step=".5" inputmode="decimal" value="' + esc(feedback.rpe ?? saved.session_rpe ?? '') + '"></label><label>Session notes (optional)<textarea name="notes" maxlength="10000">' + esc(feedback.notes ?? saved.athlete_notes ?? '') + '</textarea></label><p data-submit-status role="status"></p><button class="button primary full">' + (editing ? 'Save updated results' : 'Complete session') + '</button><button type="button" class="button full ghost" data-action="close-modal">Keep training</button></form>');
 }
 async function saveBuilder(form) {
   const b = state.builder, values = new FormData(form), access = coachToken(), isSession = b.kind === "session";
@@ -711,6 +722,11 @@ function readSetRow(row) {
 function saveStatus(message, mode) {
   const target = document.querySelector("#save-status");
   if (target) { target.textContent = message; target.className = "status " + (mode || ""); }
+  const error = document.querySelector('#save-error');
+  if (error) {
+    error.classList.toggle('hidden', mode !== 'error');
+    if (mode === 'error') error.innerHTML = esc(message) + ' <button class="button small" data-action="retry-workout">Retry</button> <button class="button small" data-action="review-saved">Review saved results</button>';
+  }
 }
 function currentLogId() {
   return document.querySelector("[data-set-row]")?.dataset.log || null;
@@ -729,52 +745,56 @@ function stopRetryLoop() {
 }
 // Re-sends every unsynced set for a log. Returns true only when nothing is left.
 async function pushDrafts(logId) {
-  const items = outstandingDrafts(logId);
-  if (!items.length) { stopRetryLoop(); return true; }
-  saveStatus("Saving…", "saving");
-  let ok = true;
-  for (const item of items) {
-    try {
-      await saveSet(item.record, athleteToken());
-      draftRemove(item.logId, item.record, item.record);
-    } catch (error) { console.error(error); ok = false; }
+  const saver = state.saver;
+  if (!saver || saver.log.id !== currentLogId() || state.submitting || saver.log.status === 'completed') return false;
+  try {
+    await saver.flush();
+    if (!outstandingDrafts(saver.log.id).length) stopRetryLoop();
+    else startRetryLoop();
+    return true;
+  } catch (error) {
+    if (saver.conflict) stopRetryLoop(); else startRetryLoop();
+    return false;
   }
-  const cleared = !outstandingDrafts(logId).length;
-  if (ok && cleared) { saveStatus("Saved ✓", "saved"); stopRetryLoop(); }
-  else { saveStatus("Saved on device — will retry", "error"); startRetryLoop(); }
-  return ok && cleared;
 }
 function scheduleSave(row, instant) {
-  const record = readSetRow(row), key = record.workout_exercise_id + ":" + record.set_number, logId = row.dataset.log;
-  draftPut(logId, record);
-  clearTimeout(state.timers.get(key));
-  saveStatus("Saving…", "saving");
-  const run = () => {
-    state.timers.delete(key);
-    const request = saveSet(record, athleteToken()).then(() => {
-      draftRemove(logId, record, record);
-      if (!outstandingDrafts(logId).length) saveStatus("Saved ✓", "saved");
-    }).catch((error) => {
-      console.error(error);
-      saveStatus("Saved on device — will retry", "error");
-      startRetryLoop();
-    }).finally(() => state.saves.delete(key));
-    state.saves.set(key, request);
-  };
-  if (instant) run();
-  else state.timers.set(key, setTimeout(run, SAVE_DEBOUNCE_MS));
+  if (state.submitting || !state.saver || row.dataset.log !== state.saver.log.id || row.querySelector('input:disabled')) return true;
+  if ([...row.querySelectorAll('input')].some(input => !input.validity.valid)) {
+    saveStatus('Check the highlighted set values before saving.', 'error');
+    return false;
+  }
+  const record = readSetRow(row);
+  if (JSON.stringify(record) === row.dataset.lastValue) return true;
+  try {
+    state.saver.put(record);
+    row.dataset.lastValue = JSON.stringify(record);
+  } catch {
+    saveStatus('Device storage is unavailable. Keep this page open and enable storage before saving.', 'error');
+    return false;
+  }
+  clearTimeout(state.saveTimer);
+  if (state.saver.log.status === 'completed') { saveStatus('Changes on this device — choose Save changes', 'saving'); return true; }
+  saveStatus('Saving…', 'saving');
+  // Blur coalesces neighbouring inputs instead of starting another per-set write.
+  state.saveTimer = setTimeout(() => pushDrafts(), instant ? 100 : SAVE_DEBOUNCE_MS);
+  return true;
 }
-// Cancels pending debounces, captures current inputs, and pushes everything.
-async function flushSaves() {
-  const logId = currentLogId();
-  document.querySelectorAll("[data-set-row]").forEach((row) => {
-    const key = row.dataset.exercise + ":" + row.dataset.number;
-    clearTimeout(state.timers.get(key));
-    state.timers.delete(key);
-    draftPut(row.dataset.log, readSetRow(row));
-  });
-  await Promise.allSettled([...state.saves.values()]);
-  return pushDrafts(logId);
+function captureSets() {
+  for (const input of document.querySelectorAll('[data-set-input]:not(:disabled)')) {
+    if (!input.reportValidity()) throw new Error('Check the set values before saving.');
+  }
+  for (const row of document.querySelectorAll('[data-set-row]')) {
+    if (!scheduleSave(row, false)) throw new Error('Changes could not be saved on this device. Keep this page open and enable storage.');
+  }
+  clearTimeout(state.saveTimer);
+}
+async function reviewSavedResults() {
+  const saver = state.saver;
+  await saver.queue;
+  const workout = await getWorkoutDetail(saver.log.id, athleteToken());
+  if (workout.log.athlete_id !== state.athlete?.id) throw new Error('Select the correct athlete.');
+  const drafts = saver.drafts();
+  modal('<h2>Review saved results</h2><p class="subtle">Another save may have changed this workout. Compare these database values with your edits below before choosing to keep your edits.</p>' + workout.exercises.map(ex => '<h3>' + esc(ex.exercise_name) + '</h3>' + ex.setLogs.map(set => '<p>Set ' + set.set_number + ': saved ' + esc(formattedSet(set, ex.tracking_type)) + (drafts[ex.id + ':' + set.set_number] ? ' · your edit ' + esc(formattedSet(drafts[ex.id + ':' + set.set_number], ex.tracking_type)) : '') + '</p>').join('')).join('') + '<p>Saved RPE: ' + esc(workout.log.session_rpe ?? '—') + ' · Notes: ' + esc(workout.log.athlete_notes || '—') + '</p><button class="button primary" data-action="confirm-reviewed" data-version="' + esc(workout.log.updated_at) + '">Keep my edits for the next save</button><button class="button ghost" data-action="close-modal">Cancel</button>');
 }
 async function showExerciseHistory(exerciseId) {
   if (!exerciseId) return toast("This custom exercise has no library history yet.");
@@ -952,10 +972,21 @@ async function eventAction(action, element) {
   }
   if (action === "start-workout") return openWorkoutForSession(element.dataset.session);
   if (action === "open-workout") return go("workout/" + element.dataset.log);
+  if (action === "edit-results") return go('workout/' + element.dataset.log + '?edit=1');
+  if (action === "retry-workout") return state.saver?.log.status === 'completed' ? finishModal(state.saver.log.id) : pushDrafts();
+  if (action === "review-saved") return reviewSavedResults();
+  if (action === "confirm-reviewed") {
+    localStorage.setItem(state.saver.versionKey, element.dataset.version);
+    state.saver.revision = element.dataset.version;
+    state.saver.log.updated_at = element.dataset.version;
+    state.saver.conflict = false;
+    closeModal();
+    return finishModal(state.saver.log.id);
+  }
   if (action === "copy-previous") return copyPrior(element.dataset.exercise);
   if (action === "exercise-history") return showExerciseHistory(element.dataset.libraryExercise);
   if (action === "finish-workout") {
-    if (!await flushSaves()) return toast("Some sets are not saved yet. Reconnect and try again before finishing.");
+    captureSets();
     return finishModal(element.dataset.log);
   }
   if (action === "close-modal") return closeModal();
@@ -1000,6 +1031,7 @@ async function eventAction(action, element) {
   }
 }
 document.addEventListener("click", (event) => {
+  if (state.submitting && event.target.closest('button,a')) { event.preventDefault(); return; }
   const target = event.target.closest("[data-action]");
   if (!target || target.disabled) return;
   event.preventDefault();
@@ -1008,6 +1040,12 @@ document.addEventListener("click", (event) => {
 document.addEventListener("input", (event) => {
   const input = event.target.closest("[data-set-input]");
   if (input) scheduleSave(input.closest("[data-set-row]"), false);
+  const feedbackForm = event.target.closest('[data-form="finish"]');
+  if (feedbackForm) {
+    const values = new FormData(feedbackForm);
+    try { localStorage.setItem('cbi-feedback-' + feedbackForm.dataset.log, JSON.stringify({rpe:values.get('rpe'),notes:values.get('notes')})); }
+    catch { feedbackForm.querySelector('[data-submit-status]').textContent = 'Keep this page open: device storage is unavailable.'; }
+  }
   if (event.target.id === "exercise-search") {
     const search = event.target.value.trim().toLowerCase();
     document.querySelectorAll("[data-exercise-card]").forEach((card) => card.classList.toggle("hidden", !card.dataset.search.includes(search)));
@@ -1031,6 +1069,10 @@ document.addEventListener("submit", (event) => {
   const form = event.target;
   if (!form.dataset.form) return;
   event.preventDefault();
+  if (form.dataset.busy === 'true') return;
+  form.dataset.busy = 'true';
+  const buttons = [...form.querySelectorAll('button')];
+  buttons.forEach(button => { button.disabled = true; });
   const task = async () => {
     if (form.dataset.form === "coach-login") {
       const values = new FormData(form);
@@ -1064,10 +1106,36 @@ document.addEventListener("submit", (event) => {
       return go("coach/access-codes");
     }
     if (form.dataset.form === "finish") {
-      if (!await flushSaves()) { toast("Some sets are not saved yet. Reconnect and try again."); return; }
-      const values = new FormData(form);
-      await finishWorkout(form.dataset.log, numeric(values.get("rpe")), values.get("notes"), athleteToken());
-      closeModal(); toast("Session complete ✓"); return go("workout/" + form.dataset.log);
+      const status = form.querySelector('[data-submit-status]');
+      const values = new FormData(form), saver = state.saver;
+      try {
+        captureSets();
+        state.submitting = true;
+        stopRetryLoop();
+        form.setAttribute('aria-busy', 'true');
+        status.textContent = 'Saving… Keep this page open.';
+        saveStatus('Saving…', 'saving');
+        // Prevent edits while the submitted snapshot is in flight.
+        document.querySelectorAll('[data-set-input]').forEach(input => { input.disabled = true; });
+        form.querySelectorAll('input,textarea').forEach(input => { input.readOnly = true; });
+        await saver.flush({complete:true,rpe:numeric(values.get('rpe')),notes:values.get('notes')});
+        localStorage.removeItem('cbi-feedback-' + form.dataset.log);
+        closeModal();
+        state.submitting = false;
+        toast('Results saved ✓');
+        return go('workout/' + form.dataset.log);
+      } catch (error) {
+        status.textContent = error.code === '40001'
+          ? 'This workout changed on another device. Close this dialog and choose Review saved results. Your edits are kept.'
+          : 'Could not confirm the save. Your entries are kept. Check your connection and try again.';
+        status.className = 'error-box';
+        document.querySelectorAll('[data-set-input]').forEach(input => { input.disabled = false; });
+      } finally {
+        state.submitting = false;
+        form.removeAttribute('aria-busy');
+        form.querySelectorAll('input,textarea').forEach(input => { input.readOnly = false; });
+      }
+      return;
     }
     if (form.dataset.form === "builder") return saveBuilder(form);
     if (form.dataset.form === "athlete") return saveAthlete(form);
@@ -1081,9 +1149,12 @@ document.addEventListener("submit", (event) => {
     if (form.dataset.form === "archive-team") return archiveTeam(form);
     if (form.dataset.form === "delete-team") return deleteTeam(form);
   };
-  task().catch(failure);
+  task().catch(failure).finally(() => { form.dataset.busy = 'false'; buttons.forEach(button => { button.disabled = false; }); });
 });
 async function render() {
+  if (state.submitting) return;
+  clearTimeout(state.saveTimer);
+  stopRetryLoop();
   if (!configured) {
     shell('<section class="login card hero"><div class="eyebrow">Setup required</div><h1>Connect your database</h1><p class="subtle">Copy <code>web/app-config.example.js</code> to <code>web/app-config.js</code>, then add your Supabase URL and anon key.</p></section>', false);
     return;
@@ -1097,43 +1168,45 @@ async function render() {
         return coachLogin();
       }
       if (!await checkCoach()) return coachLogin("Please sign in to access coach tools.");
-      if (pieces[1] === "dashboard") return coachDashboard();
+      if (pieces[1] === "dashboard") return await coachDashboard();
       if (pieces[1] === "access-code" || pieces[1] === "access-codes") return coachAccessCodes();
-      if (pieces[1] === "sessions") return coachSessions();
-      if (pieces[1] === "review") return coachReview(pieces[2]);
-      if (pieces[1] === "log") return coachLogDetail(pieces[2]);
+      if (pieces[1] === "sessions") return await coachSessions();
+      if (pieces[1] === "review") return await coachReview(pieces[2]);
+      if (pieces[1] === "log") return await coachLogDetail(pieces[2]);
       if (pieces[1] === "session") {
         if (!state.builder || state.builder.kind !== "session" || state.builder.id !== (pieces[2] === "new" ? null : pieces[2]) || state.builder.sourceTemplateId !== current.params.get("template")) await setupBuilder("session", pieces[2] === "new" ? null : pieces[2], current.params.get("template"));
         return builder();
       }
-      if (pieces[1] === "templates") return coachTemplates();
+      if (pieces[1] === "templates") return await coachTemplates();
       if (pieces[1] === "template") {
         if (!state.builder || state.builder.kind !== "template" || state.builder.id !== (pieces[2] === "new" ? null : pieces[2])) await setupBuilder("template", pieces[2] === "new" ? null : pieces[2]);
         return builder();
       }
-      if (pieces[1] === "athletes") return coachAthletes();
-      if (pieces[1] === "athlete-history") return coachAthleteHistory(pieces[2]);
-      if (pieces[1] === "athlete") return athleteEditor(pieces[2] === "new" ? null : pieces[2]);
-      if (pieces[1] === "team") return teamEditor(pieces[2]);
-      if (pieces[1] === "exercises") return coachExercises();
-      if (pieces[1] === "exercise") return exerciseEditor(pieces[2] === "new" ? null : pieces[2]);
-      return coachDashboard();
+      if (pieces[1] === "athletes") return await coachAthletes();
+      if (pieces[1] === "athlete-history") return await coachAthleteHistory(pieces[2]);
+      if (pieces[1] === "athlete") return await athleteEditor(pieces[2] === "new" ? null : pieces[2]);
+      if (pieces[1] === "team") return await teamEditor(pieces[2]);
+      if (pieces[1] === "exercises") return await coachExercises();
+      if (pieces[1] === "exercise") return await exerciseEditor(pieces[2] === "new" ? null : pieces[2]);
+      return await coachDashboard();
     }
     if (!await checkAthleteSession()) return athleteAccess();
     await restoreAthlete();
-    if (pieces[0] === "today") return athleteToday();
-    if (pieces[0] === "workout") return athleteWorkout(pieces[1]);
-    if (pieces[0] === "session") return athleteSessionPreview(pieces[1]);
-    if (pieces[0] === "history") return athleteHistory();
-    if (pieces[0] === "profile") return athleteProfile();
-    return athleteToday();
+    if (pieces[0] === "today") return await athleteToday();
+    if (pieces[0] === "workout") return await athleteWorkout(pieces[1]);
+    if (pieces[0] === "session") return await athleteSessionPreview(pieces[1]);
+    if (pieces[0] === "history") return await athleteHistory();
+    if (pieces[0] === "profile") return await athleteProfile();
+    return await athleteToday();
   } catch (error) {
     console.error(error);
     shell('<section class="card"><div class="eyebrow">Something went wrong</div><h1>We could not load this screen.</h1><p class="subtle">' + esc(error.message) + '</p><button class="button primary" data-action="reload">Try again</button></section>', pieces[0] === "coach");
   }
 }
 window.addEventListener("hashchange", render);
-window.addEventListener("beforeunload", () => { document.querySelectorAll("[data-set-row]").forEach((row) => draftPut(row.dataset.log, readSetRow(row))); });
+window.addEventListener("beforeunload", event => {
+  if (state.submitting || outstandingDrafts().length) { event.preventDefault(); event.returnValue = ''; }
+});
 window.addEventListener("online", () => { pushDrafts().catch(() => {}); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch((error) => console.warn("Service worker unavailable", error));
 render();
