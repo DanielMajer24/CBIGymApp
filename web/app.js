@@ -543,7 +543,7 @@ async function coachSessions() {
 async function coachDuplicatePeriod() {
   if (!state.duplicate) {
     const teams = await db.list("teams", {select:"id,name,age_group",active:"eq.true",order:"age_group.asc,name.asc"}, coachToken());
-    state.duplicate = {sourceStart: day(), sourceEnd: day(), destinationStart: addDays(day(), 7), conflictMode: "add", destinationTeamId: "", teams, preview: null, excluded: new Set(), result: null, busy: false, error: ""};
+    state.duplicate = {sourceStart: day(), sourceEnd: day(), destinationStart: addDays(day(), 7), conflictMode: "add", sourceTeamId: "", destinationTeamId: "", teams, preview: null, excluded: new Set(), result: null, busy: false, error: ""};
   }
   renderDuplicatePeriod();
 }
@@ -555,6 +555,7 @@ function renderDuplicatePeriod() {
   const d = state.duplicate;
   const valid = d.sourceStart && d.sourceEnd && d.destinationStart && d.sourceEnd >= d.sourceStart;
   const destEnd = valid ? addDays(d.destinationStart, dayDiff(d.sourceStart, d.sourceEnd)) : null;
+  const sourceTeamOptions = '<option value="">All teams</option>' + d.teams.map((team) => '<option value="' + esc(team.id) + '"' + (d.sourceTeamId === team.id ? " selected" : "") + ">" + esc(teamLabel(team)) + "</option>").join("");
   const teamOptions = '<option value="">Keep original team assignments</option>' + d.teams.map((team) => '<option value="' + esc(team.id) + '"' + (d.destinationTeamId === team.id ? " selected" : "") + ">" + esc(teamLabel(team)) + "</option>").join("");
   const setup = '<section class="card"><div class="grid two">' +
     '<label>Source start<input type="date" data-dup="sourceStart" value="' + esc(d.sourceStart) + '"></label>' +
@@ -562,6 +563,7 @@ function renderDuplicatePeriod() {
     '<label>Destination start<input type="date" data-dup="destinationStart" value="' + esc(d.destinationStart) + '"></label>' +
     '<label>Destination end (calculated)<input type="date" value="' + esc(destEnd || "") + '" disabled></label></div>' +
     '<button type="button" class="button small ghost" data-action="dup-select-week">Select full week (Mon–Sun)</button>' +
+    '<label>Filter to team<select data-dup="sourceTeamId">' + sourceTeamOptions + '</select></label>' +
     '<div class="grid two"><label>Reassign to team (optional)<select data-dup="destinationTeamId">' + teamOptions + '</select></label>' +
     '<label>If already duplicated here<select data-dup="conflictMode"><option value="add"' + (d.conflictMode === "add" ? " selected" : "") + '>Add a new copy anyway</option><option value="skip"' + (d.conflictMode === "skip" ? " selected" : "") + "\">Skip that session</option></select></label></div>" +
     (d.error ? '<p class="error-box">' + esc(d.error) + "</p>" : "") +
@@ -1088,7 +1090,7 @@ async function eventAction(action, element) {
     const d = state.duplicate;
     try {
       d.error = "";
-      d.preview = await previewDuplication(d.sourceStart, d.sourceEnd, d.destinationStart, coachToken());
+      d.preview = await previewDuplication(d.sourceStart, d.sourceEnd, d.destinationStart, d.sourceTeamId || null, coachToken());
       d.excluded = new Set();
     } catch (error) { d.error = error.message; d.preview = null; }
     return renderDuplicatePeriod();
@@ -1098,7 +1100,7 @@ async function eventAction(action, element) {
     if (d.busy) return;
     d.busy = true; renderDuplicatePeriod();
     try {
-      d.result = await duplicateTrainingPeriod(d.sourceStart, d.sourceEnd, d.destinationStart, d.conflictMode, [...d.excluded], d.destinationTeamId || null, coachToken());
+      d.result = await duplicateTrainingPeriod(d.sourceStart, d.sourceEnd, d.destinationStart, d.conflictMode, [...d.excluded], d.destinationTeamId || null, d.sourceTeamId || null, coachToken());
       d.preview = null;
     } catch (error) { d.error = error.message; } finally { d.busy = false; }
     return renderDuplicatePeriod();

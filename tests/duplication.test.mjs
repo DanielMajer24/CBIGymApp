@@ -13,9 +13,9 @@ test('PostgreSQL: training period duplication is atomic, idempotent-by-skip, tea
   t.after(() => db.close());
   const set = (name, params, user = id(900)) =>
     asUser(db, user, tx => tx.query(`select * from ${name}(${params.map((_, i) => '$' + (i + 1)).join(',')})`, params)).then(r => r.rows);
-  const preview = (start, end, dest, user) => set('preview_training_period_duplication', [start, end, dest], user);
-  const duplicate = (start, end, dest, mode = 'add', exclude = [], team = null, user) =>
-    set('duplicate_training_period', [start, end, dest, mode, exclude, team], user);
+  const preview = (start, end, dest, sourceTeam = null, user) => set('preview_training_period_duplication', [start, end, dest, sourceTeam], user);
+  const duplicate = (start, end, dest, mode = 'add', exclude = [], team = null, sourceTeam = null, user) =>
+    set('duplicate_training_period', [start, end, dest, mode, exclude, team, sourceTeam], user);
   const destWeek = addDays(today, 7);
 
   await t.test('preview shows both same-day sessions with exercise counts and team names, no conflict yet', async () => {
@@ -28,6 +28,23 @@ test('PostgreSQL: training period duplication is atomic, idempotent-by-skip, tea
     assert.equal(marlins.would_conflict, false);
   });
 
+  await t.test('filtering to a team only previews and duplicates that team\'s sessions, not every session in the date range', async () => {
+    const marlinsOnly = await preview(today, today, destWeek, id(11));
+    assert.equal(marlinsOnly.length, 1);
+    assert.equal(marlinsOnly[0].session_name, 'Fixture Strength');
+    const coachesOnly = await preview(today, today, destWeek, id(12));
+    assert.equal(coachesOnly.length, 1);
+    assert.equal(coachesOnly[0].session_name, 'Coaches Training');
+
+    const beforeCount = (await db.query('select count(*)::int as n from programmed_sessions')).rows[0].n;
+    const added = await duplicate(today, today, addDays(today, 90), 'add', [], null, id(11));
+    assert.equal(added.length, 1);
+    assert.equal(added[0].status, 'added');
+    const copy = (await db.query('select name from programmed_sessions where id=$1', [added[0].new_session_id])).rows[0];
+    assert.equal(copy.name, 'Fixture Strength');
+    assert.equal((await db.query('select count(*)::int as n from programmed_sessions')).rows[0].n, beforeCount + 1, 'only the filtered team\'s session should be copied');
+  });
+
   await t.test('empty source period and invalid range are handled without error or mutation', async () => {
     assert.deepEqual(await preview(addDays(today, 100), addDays(today, 100), destWeek), []);
     assert.deepEqual(await duplicate(addDays(today, 100), addDays(today, 100), destWeek), []);
@@ -35,8 +52,8 @@ test('PostgreSQL: training period duplication is atomic, idempotent-by-skip, tea
   });
 
   await t.test('only a coach can duplicate; anonymous and athlete callers are rejected', async () => {
-    await assert.rejects(duplicate(today, today, destWeek, 'add', [], null, null), e => e.code === '42501');
-    await assert.rejects(duplicate(today, today, destWeek, 'add', [], null, id(1)), e => e.code === '42501');
+    await assert.rejects(duplicate(today, today, destWeek, 'add', [], null, null, null), e => e.code === '42501');
+    await assert.rejects(duplicate(today, today, destWeek, 'add', [], null, null, id(1)), e => e.code === '42501');
   });
 
   const added = await duplicate(today, today, destWeek);
