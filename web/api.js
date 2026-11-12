@@ -253,16 +253,18 @@ export async function getSessionsPage({ startDate, endDate, page = 0, pageSize =
   return { sessions: rows.slice(0, pageSize), hasMore: rows.length > pageSize };
 }
 
-export function previewDuplication(sourceStart, sourceEnd, destinationStart, token) {
+export function previewDuplication(sourceStart, sourceEnd, destinationStart, sourceTeamId, token) {
   return db.rpc("preview_training_period_duplication", {
     p_source_start: sourceStart, p_source_end: sourceEnd, p_destination_start: destinationStart,
+    p_source_team_id: sourceTeamId || null,
   }, token);
 }
 
-export function duplicateTrainingPeriod(sourceStart, sourceEnd, destinationStart, conflictMode, excludeSessionIds, destinationTeamId, token) {
+export function duplicateTrainingPeriod(sourceStart, sourceEnd, destinationStart, conflictMode, excludeSessionIds, destinationTeamId, sourceTeamId, token) {
   return db.rpc("duplicate_training_period", {
     p_source_start: sourceStart, p_source_end: sourceEnd, p_destination_start: destinationStart,
     p_conflict_mode: conflictMode, p_exclude_session_ids: excludeSessionIds || [], p_destination_team_id: destinationTeamId || null,
+    p_source_team_id: sourceTeamId || null,
   }, token);
 }
 
