@@ -595,7 +595,7 @@ async function coachReview(sessionId) {
   const programmedExercises = exercises.length
     ? exercises.map((exercise) => '<div class="review-exercise"><div class="split"><div><div class="eyebrow">Exercise ' + exercise.position + '</div><h3>' + esc(exercise.exercise_name) + '</h3></div>' + supersetMark(exercise.superset_group) + '</div><div class="prescription">' + plan(exercise) + '</div>' + (exercise.coach_notes ? '<p class="subtle">' + esc(exercise.coach_notes) + '</p>' : "") + '</div>').join("")
     : '<p class="subtle">No exercises have been programmed for this session.</p>';
-  shell('<section class="page-head"><div class="eyebrow">' + dateLabel(session.session_date) + '</div><h1>' + esc(session.name) + '</h1><p class="subtle">Athlete results are read-only in coach review.</p></section><section class="card"><h2>Programmed exercises</h2>' + programmedExercises + '</section><section class="card"><h2>Completion</h2>' +
+  shell('<section class="page-head"><div class="split"><div><div class="eyebrow">' + dateLabel(session.session_date) + '</div><h1>' + esc(session.name) + '</h1><p class="subtle">Athlete results are read-only in coach review.</p></div><a class="button small" href="#coach/session/' + esc(sessionId) + '">Edit session</a></div></section><section class="card"><h2>Programmed exercises</h2>' + programmedExercises + '</section><section class="card"><h2>Completion</h2>' +
     assignments.map((assignment) => {
       const profile = Array.isArray(assignment.profiles) ? assignment.profiles[0] : assignment.profiles;
       const log = logs.find((entry) => entry.athlete_id === assignment.athlete_id);
