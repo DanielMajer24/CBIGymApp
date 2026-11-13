@@ -466,6 +466,12 @@ function dashboardFilterUrl(routeName, params, overrides) {
   const query = next.toString();
   return routeName + (query ? "?" + query : "");
 }
+// Shared by both dashboard session lists: the row itself still opens the existing read-only
+// review (unchanged), with an explicit Edit button beside it so editing never requires leaving
+// the dashboard for the separate Sessions page.
+function dashboardSessionRow(sessionId, name, subtitleHtml) {
+  return '<div class="list-button"><button type="button" class="session-title-link list-button-trigger" data-action="review-session" data-session="' + esc(sessionId) + '"><span><strong>' + esc(name) + '</strong><br>' + subtitleHtml + '</span><span>›</span></button><button type="button" class="button small ghost" data-action="edit-session-modal" data-session="' + esc(sessionId) + '" aria-label="Edit ' + esc(name) + '">Edit</button></div>';
+}
 async function coachDashboard() {
   const access = coachToken();
   const params = route().params;
@@ -505,8 +511,8 @@ async function coachDashboard() {
     '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a><a class="button" href="#coach/duplicate-period">⧉ Duplicate training period</a></div>' +
     '<section class="card tight"><div class="split"><div><h2>Athlete entry codes</h2><p class="subtle">Manage training codes for ' + athleteAgeGroups.join(', ') + '.</p></div><a class="button small" href="#coach/access-codes">Manage</a></div></section>' +
     scheduledTrainingsCard(month, calendar, "coach/dashboard") +
-    '<section class="card"><h2>Scheduled team sessions</h2>' + (calendar.map((item) => '<button class="list-button" data-action="review-session" data-session="' + esc(item.session.id) + '"><span><strong>' + esc(item.session.name) + '</strong><br>' + esc(shortDate(item.session.session_date)) + ' · ' + esc(item.teams.map(teamLabel).join(', ') || 'Individual assignments') + '</span><span>›</span></button>').join('') || '<p class="subtle">No sessions match the current filters this month.</p>') + '</section>' +
-    '<section class="card"><h2>Today’s sessions</h2>' + (todayItems.map((item) => '<button class="list-button" data-action="review-session" data-session="' + esc(item.session.id) + '"><span><strong>' + esc(item.session.name) + '</strong><br><span class="muted">' + (item.session.estimated_duration_minutes || "—") + " min · " + esc(item.session.description || "No description") + '</span></span><span>›</span></button>').join("") || '<p class="subtle">No sessions match the current filters today.</p>') + "</section>", true);
+    '<section class="card"><h2>Scheduled team sessions</h2>' + (calendar.map((item) => dashboardSessionRow(item.session.id, item.session.name, esc(shortDate(item.session.session_date)) + ' · ' + esc(item.teams.map(teamLabel).join(', ') || 'Individual assignments'))).join('') || '<p class="subtle">No sessions match the current filters this month.</p>') + '</section>' +
+    '<section class="card"><h2>Today’s sessions</h2>' + (todayItems.map((item) => dashboardSessionRow(item.session.id, item.session.name, '<span class="muted">' + (item.session.estimated_duration_minutes || "—") + " min · " + esc(item.session.description || "No description") + '</span>')).join("") || '<p class="subtle">No sessions match the current filters today.</p>') + "</section>", true);
 }
 function coachAccessCodes() {
   const cards = athleteAgeGroups.map((ageGroup) => '<section class="card"><div class="split"><div><div class="eyebrow">' + ageGroup + '</div><h2>' + ageGroup + ' athlete code</h2></div><span class="pill">Four digits</span></div><form data-form="athlete-access-code" data-age-group="' + ageGroup + '" class="stack"><label>New ' + ageGroup + ' code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><label>Confirm code<input class="pin-input" name="confirm_pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><button class="button primary full">Save ' + ageGroup + ' code</button></form></section>').join("");
@@ -642,28 +648,62 @@ async function setupBuilder(kind, id, templateId) {
   if (!b.entries.length && b.exercises.length) b.entries = [blankEntry(b.exercises[0])];
   state.builder = b;
 }
+// Lets a coach edit a session directly from the dashboard without leaving it: builds the same
+// state the full-page editor uses, then renders it in a modal instead of navigating away.
+async function editSessionModal(sessionId) {
+  await setupBuilder("session", sessionId);
+  state.builder.modal = true;
+  builder();
+}
+let comboSeq = 0;
 function comboOptions(combo) {
   try { return JSON.parse(combo.dataset.comboOptions || "[]"); } catch { return []; }
 }
+// Search text also covers category/meta so e.g. "squat" or "core" both narrow the list.
+function comboSearchText(option) { return (option.label + " " + (option.meta || "")).toLowerCase(); }
 function filterCombo(input) {
   const combo = input.closest("[data-combo]"), options = comboOptions(combo);
   const search = input.value.trim().toLowerCase();
-  const matches = search ? options.filter((option) => option.label.toLowerCase().includes(search)) : options;
+  const matches = search ? options.filter((option) => comboSearchText(option).includes(search)) : options;
   const list = combo.querySelector("[data-combo-list]");
-  list.innerHTML = matches.slice(0, 50).map((option) => '<button type="button" class="combo-option" data-action="pick-combo" data-id="' + esc(option.id) + '" data-label="' + esc(option.label) + '">' + esc(option.label) + "</button>").join("") || '<p class="combo-empty">No matches</p>';
+  const shown = matches.slice(0, 50);
+  list.innerHTML = shown.map((option, index) => '<button type="button" class="combo-option" role="option" id="' + combo.dataset.comboId + "-opt-" + index + '" data-action="pick-combo" data-id="' + esc(option.id) + '" data-label="' + esc(option.label) + '">' + esc(option.label) + (option.meta ? ' <span class="combo-option-meta">' + esc(option.meta) + '</span>' : '') + "</button>").join("") || '<p class="combo-empty" role="status">No matches</p>';
   list.hidden = false;
+  combo.dataset.activeIndex = "-1";
+  input.setAttribute("aria-expanded", "true");
+  input.removeAttribute("aria-activedescendant");
   const valueInput = combo.querySelector("[data-combo-value]");
   if (!options.some((option) => option.label === input.value)) valueInput.value = "";
 }
+function moveComboHighlight(combo, delta) {
+  const options = [...combo.querySelectorAll(".combo-option")];
+  if (!options.length) return;
+  let index = Number(combo.dataset.activeIndex || "-1") + delta;
+  if (index < 0) index = options.length - 1;
+  if (index >= options.length) index = 0;
+  combo.dataset.activeIndex = String(index);
+  options.forEach((option, i) => option.classList.toggle("is-active", i === index));
+  options[index].scrollIntoView({block: "nearest"});
+  combo.querySelector("[data-combo-search]").setAttribute("aria-activedescendant", options[index].id);
+}
+function selectComboOption(combo, option) {
+  combo.querySelector("[data-combo-value]").value = option.dataset.id;
+  const input = combo.querySelector("[data-combo-search]");
+  input.value = option.dataset.label;
+  input.setAttribute("aria-expanded", "false");
+  input.removeAttribute("aria-activedescendant");
+  combo.querySelector("[data-combo-list]").hidden = true;
+}
 function comboField(name, options, selectedId, placeholder) {
   const current = options.find((option) => option.id === selectedId)?.label || "";
-  return '<div class="combo" data-combo data-combo-options="' + esc(JSON.stringify(options)) + '">' +
-    '<input type="text" class="combo-input" data-combo-search autocomplete="off" placeholder="' + esc(placeholder) + '" value="' + esc(current) + '">' +
+  const comboId = "combo-" + comboSeq++;
+  return '<div class="combo" data-combo data-combo-id="' + comboId + '" data-combo-options="' + esc(JSON.stringify(options)) + '">' +
+    '<input type="text" class="combo-input" data-combo-search autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="' + comboId + '-list" placeholder="' + esc(placeholder) + '" value="' + esc(current) + '">' +
     '<input type="hidden" name="' + esc(name) + '" data-combo-value value="' + esc(selectedId || "") + '">' +
-    '<div class="combo-list" data-combo-list hidden></div></div>';
+    '<div class="combo-list" id="' + comboId + '-list" data-combo-list role="listbox" hidden></div></div>';
 }
 function builderInputs(entry, index, library) {
-  const options = library.map((exercise) => ({id: exercise.id, label: exercise.name}));
+  const options = library.map((exercise) => ({id: exercise.id, label: exercise.name, meta: exercise.category}));
   return '<article class="card coach-builder-item"><div class="split"><h3>Exercise ' + (index + 1) + '</h3><div class="reorder"><button type="button" class="button small ghost" data-action="move-entry" data-index="' + index + '" data-direction="-1">↑</button><button type="button" class="button small ghost" data-action="move-entry" data-index="' + index + '" data-direction="1">↓</button><button type="button" class="button small danger" data-action="remove-entry" data-index="' + index + '">×</button></div></div>' +
     '<div class="grid two"><label>Exercise' + comboField("exercise_id_" + index, options, entry.exercise_id, "Search exercise") + '</label><label>Sets<input name="sets_' + index + '" type="number" min="1" max="30" value="' + esc(entry.sets || 3) + '"></label><label>Superset<select name="superset_' + index + '">' + supersetOptions(entry.superset_group) + '</select></label><label>Reps<input name="reps_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_reps || "") + '"></label><label>Load (kg)<input name="load_' + index + '" type="number" min="0" step=".5" value="' + esc(entry.prescribed_load_kg || "") + '"></label><label>Percentage<input name="percent_' + index + '" type="number" min="0" max="100" step=".5" value="' + esc(entry.prescribed_percent || "") + '"></label><label>Target RPE<input name="rpe_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rpe || "") + '"></label><label>Rest (seconds)<input name="rest_' + index + '" type="number" min="0" value="' + esc(entry.rest_seconds || "") + '"></label><label>Tempo<input name="tempo_' + index + '" value="' + esc(entry.tempo || "") + '"></label></div><label>Coach notes<textarea name="notes_' + index + '">' + esc(entry.coach_notes || "") + '</textarea></label><details><summary>More prescription options</summary><div class="grid two"><label>Target RIR<input name="rir_' + index + '" type="number" min="0" max="10" step=".5" value="' + esc(entry.target_rir || "") + '"></label><label>Custom unit<input name="unit_' + index + '" value="' + esc(entry.custom_unit || "") + '"></label><label>Video URL<input name="video_' + index + '" type="url" value="' + esc(entry.video_url || "") + '"></label></div><label>Exercise instructions<textarea name="instructions_' + index + '">' + esc(entry.instructions || "") + "</textarea></label></details></article>";
 }
@@ -673,11 +713,14 @@ function builder() {
   const selectedSessionType = sessionTypes.includes(b.sessionType) ? b.sessionType : inferredSessionType(b);
   const people = b.athletes.map((athlete) => '<option value="' + esc(athlete.id) + '"' + (b.assignmentIds.includes(athlete.id) ? " selected" : "") + ">" + esc(athleteFullName(athlete)) + "</option>").join("");
   const teams = '<option value="">No team</option>' + b.teams.map((team) => '<option value="' + esc(team.id) + '"' + (b.teamId === team.id ? " selected" : "") + ">" + esc(teamLabel(team)) + "</option>").join("");
-  shell('<section class="page-head"><div class="eyebrow">' + (b.id ? "Edit" : "Create") + " " + b.kind + '</div><h1>' + (isSession ? "Program session" : "Save template") + '</h1><p class="subtle">Fields stay optional so programming remains fast.</p></section><form data-form="builder" class="stack">' +
+  const headerTitle = (b.id ? "Edit " : "Create ") + (isSession ? "session" : "template");
+  const body = '<form data-form="builder" class="stack">' +
     '<section class="card"><div class="grid two">' + (isSession ? '<label>Date<input name="date" type="date" value="' + esc(b.date) + '"></label>' : "") + '<label>Name<input data-builder-name name="name" required value="' + esc(b.name) + '"></label><label>Session type<select name="session_type" data-session-type data-manual="' + (b.sessionTypeManual ? "true" : "false") + '">' + sessionTypeOptions(selectedSessionType) + '</select></label>' + (isSession ? '<label>Estimated minutes<input name="duration" type="number" min="1" value="' + esc(b.duration) + '"></label>' : "") + '</div><label>Description<textarea data-builder-description name="description">' + esc(b.description) + '</textarea></label><p class="subtle builder-colour-hint">This saved type controls the athlete calendar colour. The suggested type updates from the name until you choose one.</p></section>' +
     '<section><div class="split"><h2>Exercises</h2><button type="button" class="button small" data-action="new-exercise">+ New exercise</button></div>' + b.entries.map((entry,index) => builderInputs(entry,index,b.exercises)).join("") + '<button type="button" class="button full ghost" data-action="add-entry">+ Add exercise</button></section>' +
     (isSession ? '<section class="card"><div class="split"><h2>Assign athletes</h2><button type="button" class="button small ghost" data-action="new-team">+ Team</button></div><div class="grid two"><label>Team<select name="team">' + teams + '</select></label><label>Individual athletes<select multiple name="athletes" size="5">' + people + '</select></label></div><label class="inline"><input type="checkbox" name="everyone"' + (b.all ? " checked" : "") + '> Everyone active</label><p class="subtle">A selected team expands to all of its active members. You can also add individual athletes.</p></section>' : "") +
-    '<button class="button primary full">Save ' + (isSession ? "session" : "template") + "</button></form>", true);
+    '<button class="button primary full">Save ' + (isSession ? "session" : "template") + "</button>" + (b.modal ? '<button type="button" class="button full ghost" data-action="close-modal">Cancel</button>' : "") + "</form>";
+  if (b.modal) return modal('<div class="split"><div><div class="eyebrow">Dashboard</div><h2>' + headerTitle + '</h2></div><button type="button" class="button small ghost" data-action="close-modal" aria-label="Close without saving">×</button></div>' + body);
+  shell('<section class="page-head"><div class="eyebrow">' + (b.id ? "Edit" : "Create") + " " + b.kind + '</div><h1>' + (isSession ? "Program session" : "Save template") + '</h1><p class="subtle">Fields stay optional so programming remains fast.</p></section>' + body, true);
 }
 async function coachTemplates() {
   const templates = await db.list("session_templates", {select:"*",order:"updated_at.desc"}, coachToken());
@@ -731,10 +774,20 @@ function modal(content) {
   document.querySelector(".modal-backdrop")?.remove();
   const wrap = document.createElement("div");
   wrap.className = "modal-backdrop";
-  wrap.innerHTML = '<section class="modal">' + content + "</section>";
+  wrap.innerHTML = '<section class="modal" role="dialog" aria-modal="true" tabindex="-1">' + content + "</section>";
   document.body.append(wrap);
+  // Closing mid-save would orphan the in-flight request and could flash a stale dashboard; block it like disabled buttons already do.
+  wrap.addEventListener("click", (event) => { if (event.target === wrap && !wrap.querySelector('[data-busy="true"]')) closeModal(); });
+  const section = wrap.querySelector(".modal");
+  (section.querySelector("[autofocus]") || section).focus({preventScroll: true});
 }
-function closeModal() { document.querySelector(".modal-backdrop")?.remove(); }
+function closeModal() {
+  // Only discard the in-progress edit when the builder itself is the modal being closed —
+  // not when a nested quick-create (exercise/team) modal closes to return to the builder.
+  const backdrop = document.querySelector(".modal-backdrop");
+  if (state.builder?.modal && backdrop?.querySelector('[data-form="builder"]')) state.builder = null;
+  backdrop?.remove();
+}
 function newExerciseModal() {
   modal('<div class="split"><h2>Create exercise</h2><button class="button small ghost" data-action="close-modal">×</button></div><form data-form="quick-exercise" class="stack"><label>Name<input name="name" required autofocus></label><div class="grid two"><label>Category<select name="category"><option>Other</option><option>Squat</option><option>Hinge</option><option>Push</option><option>Pull</option><option>Single Leg</option><option>Core</option><option>Plyometric</option><option>Speed</option><option>Conditioning</option></select></label><label>Tracking<select name="tracking_type">' + trackingOptions("weight_reps") + '</select></label></div><button class="button primary full">Create and add</button></form>');
 }
@@ -786,14 +839,16 @@ function finishModal(logId) {
 }
 async function saveBuilder(form) {
   const b = state.builder, values = new FormData(form), access = coachToken(), isSession = b.kind === "session";
+  // Every row must resolve to a real exercise_id — silently dropping an unmatched row would
+  // quietly discard whatever the coach programmed into it, so this blocks the save instead.
   const entries = b.entries.map((entry,index) => {
     const exercise = b.exercises.find((item) => item.id === values.get("exercise_id_" + index));
-    if (!exercise) return null;
+    if (!exercise) throw new Error("Choose an exercise for row " + (index + 1) + ", or remove that row.");
     return { exercise_id:exercise.id, exercise_name:exercise.name, tracking_type:exercise.tracking_type, position:index + 1, superset_group:values.get("superset_" + index) || null,
       sets:Number(values.get("sets_" + index) || 3), prescribed_reps:numeric(values.get("reps_" + index)), prescribed_load_kg:numeric(values.get("load_" + index)),
       prescribed_percent:numeric(values.get("percent_" + index)), target_rpe:numeric(values.get("rpe_" + index)), target_rir:numeric(values.get("rir_" + index)), rest_seconds:numeric(values.get("rest_" + index)),
       tempo:values.get("tempo_" + index) || null, coach_notes:values.get("notes_" + index) || null, instructions:values.get("instructions_" + index) || exercise.default_instructions || null, video_url:values.get("video_" + index) || exercise.video_url || null, custom_unit:values.get("unit_" + index) || null };
-  }).filter(Boolean);
+  });
   if (!entries.length) throw new Error("Add at least one exercise.");
   const selected = isSession ? new Set(values.getAll("athletes")) : null;
   const selectedTeam = isSession ? values.get("team") : null;
@@ -821,6 +876,9 @@ async function saveBuilder(form) {
     await db.insert("session_assignments", [...selected].map((athleteId) => ({session_id:recordId,athlete_id:athleteId,assigned_team_id:selectedTeam || null})), access);
   }
   toast(isSession ? "Session saved" : "Template saved");
+  // Opened from the dashboard: stay put and refresh it in place so the current
+  // team/age-group/month filters survive, instead of navigating to the full review page.
+  if (b.modal) { closeModal(); return coachDashboard(); }
   go(isSession ? "coach/review/" + recordId : "coach/templates");
 }
 
@@ -977,9 +1035,11 @@ async function quickTeam(form) {
     created = await db.insert("teams", {name,age_group:ageGroup,active:true}, access);
     toast("Team created");
   }
-  if (state.builder && route().path.indexOf("coach/session") === 0) state.builder.teams.push(created[0]);
+  // Was route-matched against the hash before the dashboard could open this same builder in a
+  // modal without ever changing the hash; state.builder.kind is the reliable signal either way.
+  if (state.builder?.kind === "session") state.builder.teams.push(created[0]);
   closeModal();
-  return state.builder && route().path.indexOf("coach/session") === 0 ? builder() : render();
+  return state.builder?.kind === "session" ? builder() : render();
 }
 async function saveTeam(form) {
   const values = new FormData(form);
@@ -1107,13 +1167,8 @@ async function eventAction(action, element) {
   }
   if (action === "dup-cancel") { state.duplicate.preview = null; state.duplicate.error = ""; return renderDuplicatePeriod(); }
   if (action === "dup-reset") { state.duplicate = null; return coachDuplicatePeriod(); }
-  if (action === "pick-combo") {
-    const combo = element.closest("[data-combo]");
-    combo.querySelector("[data-combo-value]").value = element.dataset.id;
-    combo.querySelector("[data-combo-search]").value = element.dataset.label;
-    combo.querySelector("[data-combo-list]").hidden = true;
-    return;
-  }
+  if (action === "pick-combo") { selectComboOption(element.closest("[data-combo]"), element); return; }
+  if (action === "edit-session-modal") return editSessionModal(element.dataset.session);
   if (action === "open-calendar-session") {
     if (element.dataset.log) return go("workout/" + element.dataset.log);
     return athleteSessionPreview(element.dataset.session);
@@ -1241,7 +1296,27 @@ document.addEventListener("focusout", (event) => {
   const comboInput = event.target.closest("[data-combo-search]");
   if (comboInput) {
     const list = comboInput.closest("[data-combo]").querySelector("[data-combo-list]");
-    setTimeout(() => { list.hidden = true; }, 150);
+    setTimeout(() => { list.hidden = true; comboInput.setAttribute("aria-expanded", "false"); }, 150);
+  }
+});
+document.addEventListener("keydown", (event) => {
+  const comboInput = event.target.closest("[data-combo-search]");
+  if (comboInput) {
+    const combo = comboInput.closest("[data-combo]");
+    const list = combo.querySelector("[data-combo-list]");
+    if (event.key === "ArrowDown") { event.preventDefault(); if (list.hidden) filterCombo(comboInput); moveComboHighlight(combo, 1); return; }
+    if (event.key === "ArrowUp") { event.preventDefault(); if (list.hidden) filterCombo(comboInput); moveComboHighlight(combo, -1); return; }
+    if (event.key === "Enter" && !list.hidden) {
+      const options = [...combo.querySelectorAll(".combo-option")];
+      const target = options[Number(combo.dataset.activeIndex || "-1")] || (options.length === 1 ? options[0] : null);
+      if (target) { event.preventDefault(); selectComboOption(combo, target); return; }
+    }
+    if (event.key === "Escape" && !list.hidden) { event.preventDefault(); event.stopPropagation(); list.hidden = true; comboInput.setAttribute("aria-expanded", "false"); return; }
+  }
+  // A second Escape (or the first, outside a combo) closes the modal — guarded against mid-save for the same reason the backdrop click is.
+  if (event.key === "Escape") {
+    const backdrop = document.querySelector(".modal-backdrop");
+    if (backdrop && !backdrop.querySelector('[data-busy="true"]')) { event.preventDefault(); closeModal(); }
   }
 });
 document.addEventListener("submit", (event) => {

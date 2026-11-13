@@ -92,6 +92,15 @@ textarea { min-height:88px; resize:vertical; }
 .coach-nav a.active { color:var(--orange); border-color:var(--orange); }
 .list-button { display:flex; width:100%; align-items:center; justify-content:space-between; gap:8px; margin:8px 0; padding:13px; color:var(--ink); text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:13px; }
 .list-button:hover { border-color:#9777b7; }
+.list-button-trigger { display:flex; flex:1 1 auto; min-width:0; align-items:center; justify-content:space-between; gap:8px; }
+.combo { position:relative; }
+.combo-list { position:absolute; z-index:6; top:calc(100% + 4px); right:0; left:0; max-height:260px; overflow:auto; padding:4px; background:var(--panel-2); border:1px solid var(--line); border-radius:12px; box-shadow:0 14px 34px #0008; }
+.combo-option { display:flex; align-items:baseline; justify-content:space-between; gap:8px; width:100%; padding:9px 10px; color:var(--ink); text-align:left; background:transparent; border:0; border-radius:8px; }
+.combo-option:hover,.combo-option.is-active { background:var(--purple); }
+.combo-option:focus-visible { outline:2px solid var(--orange); outline-offset:-2px; }
+.combo-option-meta { color:var(--muted); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.combo-empty { margin:0; padding:9px 10px; color:var(--muted); font-size:.85rem; }
+.modal:focus-visible { outline:none; }
 .muted { color:var(--muted); }
 .empty { padding:35px 16px; color:var(--muted); text-align:center; }
 .notice { padding:9px 11px; color:#cdeeff; font-size:.88rem; background:#102b3a; border-left:3px solid var(--cyan); border-radius:0 9px 9px 0; }
