@@ -59,12 +59,17 @@ function validAgeGroup(value) { return athleteAgeGroups.includes(value); }
 function teamLabel(team) { return (team?.age_group ? team.age_group + " · " : "") + (team?.name || "Team"); }
 // A stable, deterministic colour per team (from its id) so the same team always
 // reads the same colour across the calendar and both dashboard session lists.
+// teamPaletteInk is the readable text colour for each matching background, same
+// pairing approach as --orange-ink/--cyan-ink above.
 const teamPalette = ["#f1982d", "#18afe0", "#a780d0", "#fb7185", "#34d399", "#facc15", "#60a5fa", "#f472b6"];
-function teamColor(teamId) {
+const teamPaletteInk = ["#281405", "#052536", "#1c0f2b", "#330711", "#042d1b", "#241b02", "#071c33", "#330a1f"];
+function teamIndex(teamId) {
   let hash = 0;
   for (let i = 0; i < teamId.length; i++) hash = (hash * 31 + teamId.charCodeAt(i)) >>> 0;
-  return teamPalette[hash % teamPalette.length];
+  return hash % teamPalette.length;
 }
+function teamColor(teamId) { return teamPalette[teamIndex(teamId)]; }
+function teamInk(teamId) { return teamPaletteInk[teamIndex(teamId)]; }
 function teamNamesWithDots(teams) {
   return teams?.length ? teams.map((team) => '<span class="team-dot" style="background:' + teamColor(team.id) + '" aria-hidden="true"></span>' + esc(teamLabel(team))).join(', ') : 'Individual assignments';
 }
@@ -385,7 +390,14 @@ function calendarItem(session, log, item = {}) {
   const display = log ? {...session, name:log.session_name || session.name, session_type:log.session_type || session.session_type} : session;
   const tone = sessionType(display), status = calendarStatus(log, session.session_date);
   const teamNames = item.teams?.map(teamLabel).join(', ') || 'Individual assignments'; // plain text for the aria-label
-  return '<button class="calendar-session tone-' + tone + '" data-action="' + (item.coach ? 'review-session' : 'open-calendar-session') + '" data-session="' + esc(session.id) + '"' + (log ? ' data-log="' + esc(log.id) + '"' : "") + ' aria-label="Open ' + esc(display.name) + (item.coach ? ' · ' + esc(teamNames) : '') + ' on ' + esc(dateLabel(session.session_date)) + '"><span class="calendar-session-title">' + esc(display.name) + '</span>' + (item.coach ? '<span class="calendar-team">' + teamNamesWithDots(item.teams) + '</span>' : '<span class="calendar-session-status">' + esc(status) + '</span>') + '</button>';
+  // Coach pills are coloured by (primary) team, not session type — the type is still
+  // shown via the type legend/colour for the athlete-facing calendar, which is
+  // unaffected. A session with no team (individual assignments) falls back to a
+  // neutral chip colour, same as the rest of the app's neutral ".pill" chips.
+  const primaryTeam = item.teams?.[0];
+  const toneClass = item.coach ? '' : ' tone-' + tone;
+  const boxStyle = item.coach ? ' style="background:' + (primaryTeam ? teamColor(primaryTeam.id) : '#382949') + ';border-color:' + (primaryTeam ? teamColor(primaryTeam.id) : '#382949') + ';color:' + (primaryTeam ? teamInk(primaryTeam.id) : '#e8deef') + '"' : '';
+  return '<button class="calendar-session' + toneClass + '"' + boxStyle + ' data-action="' + (item.coach ? 'review-session' : 'open-calendar-session') + '" data-session="' + esc(session.id) + '"' + (log ? ' data-log="' + esc(log.id) + '"' : "") + ' aria-label="Open ' + esc(display.name) + (item.coach ? ' · ' + esc(teamNames) : '') + ' on ' + esc(dateLabel(session.session_date)) + '"><span class="calendar-session-title">' + esc(display.name) + '</span>' + (item.coach ? '<span class="calendar-team">' + teamNamesWithDots(item.teams) + '</span>' : '<span class="calendar-session-status">' + esc(status) + '</span>') + '</button>';
 }
 function calendarGrid(month, sessions) {
   const bounds = monthBounds(month), byDate = new Map();
@@ -413,8 +425,12 @@ function calendarSessions(assignments, logs) {
 function scheduledTrainingsCard(month, sessions, routeName, teams) {
   // teams is only passed for the coach dashboard — the athlete profile reuses this same
   // card and has no use for a team-colour key, since an athlete only ever sees their own.
+  // Coach pills are coloured by team now (see calendarItem), not session type, so the
+  // type legend would be misleading there; it still applies to the unchanged athlete view.
+  const isCoachView = Array.isArray(teams);
+  const typeLegend = isCoachView ? '' : '<div class="calendar-legend"><span class="legend-item tone-strength">Strength</span><span class="legend-item tone-power">Power</span><span class="legend-item tone-conditioning">Conditioning</span><span class="legend-item tone-recovery">Recovery</span><span class="legend-item tone-court">Court</span></div>';
   const teamLegend = teams?.length ? '<div class="calendar-legend team-legend">' + teams.map((team) => '<span class="legend-item"><span class="team-dot" style="background:' + teamColor(team.id) + '" aria-hidden="true"></span>' + esc(teamLabel(team)) + '</span>').join('') + '</div>' : '';
-  return '<section class="card calendar-card"><div class="calendar-header"><div><div class="eyebrow">' + esc(monthLabel(month)) + '</div><h2>Scheduled trainings</h2><p class="subtle">Tap any workout to view its program or resume it.</p></div><div class="calendar-controls"><button class="button small ghost icon-button" data-action="calendar-prev" data-calendar-route="' + esc(routeName) + '" aria-label="Previous month">←</button><button class="button small ghost icon-button" data-action="calendar-next" data-calendar-route="' + esc(routeName) + '" aria-label="Next month">→</button></div></div><div class="calendar-legend"><span class="legend-item tone-strength">Strength</span><span class="legend-item tone-power">Power</span><span class="legend-item tone-conditioning">Conditioning</span><span class="legend-item tone-recovery">Recovery</span><span class="legend-item tone-court">Court</span></div>' + teamLegend + calendarGrid(month, sessions) + (sessions.length ? "" : '<p class="subtle calendar-empty">No sessions assigned for this month.</p>') + '</section>';
+  return '<section class="card calendar-card"><div class="calendar-header"><div><div class="eyebrow">' + esc(monthLabel(month)) + '</div><h2>Scheduled trainings</h2><p class="subtle">Tap any workout to view its program or resume it.</p></div><div class="calendar-controls"><button class="button small ghost icon-button" data-action="calendar-prev" data-calendar-route="' + esc(routeName) + '" aria-label="Previous month">←</button><button class="button small ghost icon-button" data-action="calendar-next" data-calendar-route="' + esc(routeName) + '" aria-label="Next month">→</button></div></div>' + typeLegend + teamLegend + calendarGrid(month, sessions) + (sessions.length ? "" : '<p class="subtle calendar-empty">No sessions assigned for this month.</p>') + '</section>';
 }
 async function athleteSessionPreview(sessionId) {
   if (!state.athlete) return athleteTeamPicker();
