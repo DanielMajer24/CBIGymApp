@@ -57,6 +57,17 @@ function numeric(value) { return value === "" || value === null || value === und
 function html(parts) { return parts.join(""); }
 function validAgeGroup(value) { return athleteAgeGroups.includes(value); }
 function teamLabel(team) { return (team?.age_group ? team.age_group + " · " : "") + (team?.name || "Team"); }
+// A stable, deterministic colour per team (from its id) so the same team always
+// reads the same colour across the calendar and both dashboard session lists.
+const teamPalette = ["#f1982d", "#18afe0", "#a780d0", "#fb7185", "#34d399", "#facc15", "#60a5fa", "#f472b6"];
+function teamColor(teamId) {
+  let hash = 0;
+  for (let i = 0; i < teamId.length; i++) hash = (hash * 31 + teamId.charCodeAt(i)) >>> 0;
+  return teamPalette[hash % teamPalette.length];
+}
+function teamNamesWithDots(teams) {
+  return teams?.length ? teams.map((team) => '<span class="team-dot" style="background:' + teamColor(team.id) + '" aria-hidden="true"></span>' + esc(teamLabel(team))).join(', ') : 'Individual assignments';
+}
 function toast(message) {
   const old = document.querySelector(".toast");
   if (old) old.remove();
@@ -373,8 +384,8 @@ function calendarStatus(log, sessionDate) {
 function calendarItem(session, log, item = {}) {
   const display = log ? {...session, name:log.session_name || session.name, session_type:log.session_type || session.session_type} : session;
   const tone = sessionType(display), status = calendarStatus(log, session.session_date);
-  const teamNames = item.teams?.map(teamLabel).join(', ') || 'Individual assignments';
-  return '<button class="calendar-session tone-' + tone + '" data-action="' + (item.coach ? 'review-session' : 'open-calendar-session') + '" data-session="' + esc(session.id) + '"' + (log ? ' data-log="' + esc(log.id) + '"' : "") + ' aria-label="Open ' + esc(display.name) + (item.coach ? ' · ' + esc(teamNames) : '') + ' on ' + esc(dateLabel(session.session_date)) + '"><span class="calendar-session-title">' + esc(display.name) + '</span>' + (item.coach ? '<span class="calendar-team">' + esc(teamNames) + '</span>' : '<span class="calendar-session-status">' + esc(status) + '</span>') + '</button>';
+  const teamNames = item.teams?.map(teamLabel).join(', ') || 'Individual assignments'; // plain text for the aria-label
+  return '<button class="calendar-session tone-' + tone + '" data-action="' + (item.coach ? 'review-session' : 'open-calendar-session') + '" data-session="' + esc(session.id) + '"' + (log ? ' data-log="' + esc(log.id) + '"' : "") + ' aria-label="Open ' + esc(display.name) + (item.coach ? ' · ' + esc(teamNames) : '') + ' on ' + esc(dateLabel(session.session_date)) + '"><span class="calendar-session-title">' + esc(display.name) + '</span>' + (item.coach ? '<span class="calendar-team">' + teamNamesWithDots(item.teams) + '</span>' : '<span class="calendar-session-status">' + esc(status) + '</span>') + '</button>';
 }
 function calendarGrid(month, sessions) {
   const bounds = monthBounds(month), byDate = new Map();
@@ -399,8 +410,11 @@ function calendarSessions(assignments, logs) {
   logs.filter((log) => !assignedSessionIds.has(log.session_id)).forEach((log) => sessions.push({ session:{ id:log.session_id, name:log.session_name, description:"", session_type:log.session_type, session_date:log.session_date }, log }));
   return sessions;
 }
-function scheduledTrainingsCard(month, sessions, routeName) {
-  return '<section class="card calendar-card"><div class="calendar-header"><div><div class="eyebrow">' + esc(monthLabel(month)) + '</div><h2>Scheduled trainings</h2><p class="subtle">Tap any workout to view its program or resume it.</p></div><div class="calendar-controls"><button class="button small ghost icon-button" data-action="calendar-prev" data-calendar-route="' + esc(routeName) + '" aria-label="Previous month">←</button><button class="button small ghost icon-button" data-action="calendar-next" data-calendar-route="' + esc(routeName) + '" aria-label="Next month">→</button></div></div><div class="calendar-legend"><span class="legend-item tone-strength">Strength</span><span class="legend-item tone-power">Power</span><span class="legend-item tone-conditioning">Conditioning</span><span class="legend-item tone-recovery">Recovery</span><span class="legend-item tone-court">Court</span></div>' + calendarGrid(month, sessions) + (sessions.length ? "" : '<p class="subtle calendar-empty">No sessions assigned for this month.</p>') + '</section>';
+function scheduledTrainingsCard(month, sessions, routeName, teams) {
+  // teams is only passed for the coach dashboard — the athlete profile reuses this same
+  // card and has no use for a team-colour key, since an athlete only ever sees their own.
+  const teamLegend = teams?.length ? '<div class="calendar-legend team-legend">' + teams.map((team) => '<span class="legend-item"><span class="team-dot" style="background:' + teamColor(team.id) + '" aria-hidden="true"></span>' + esc(teamLabel(team)) + '</span>').join('') + '</div>' : '';
+  return '<section class="card calendar-card"><div class="calendar-header"><div><div class="eyebrow">' + esc(monthLabel(month)) + '</div><h2>Scheduled trainings</h2><p class="subtle">Tap any workout to view its program or resume it.</p></div><div class="calendar-controls"><button class="button small ghost icon-button" data-action="calendar-prev" data-calendar-route="' + esc(routeName) + '" aria-label="Previous month">←</button><button class="button small ghost icon-button" data-action="calendar-next" data-calendar-route="' + esc(routeName) + '" aria-label="Next month">→</button></div></div><div class="calendar-legend"><span class="legend-item tone-strength">Strength</span><span class="legend-item tone-power">Power</span><span class="legend-item tone-conditioning">Conditioning</span><span class="legend-item tone-recovery">Recovery</span><span class="legend-item tone-court">Court</span></div>' + teamLegend + calendarGrid(month, sessions) + (sessions.length ? "" : '<p class="subtle calendar-empty">No sessions assigned for this month.</p>') + '</section>';
 }
 async function athleteSessionPreview(sessionId) {
   if (!state.athlete) return athleteTeamPicker();
@@ -510,9 +524,9 @@ async function coachDashboard() {
     '<div class="grid three"><article class="card tight"><div class="metric">' + todayItems.length + '</div><div class="metric-label">Sessions</div></article><article class="card tight"><div class="metric">' + done + "/" + assigned + '</div><div class="metric-label">Complete</div></article><article class="card tight"><div class="metric">' + athletes.length + '</div><div class="metric-label">Athletes</div></article></div>' +
     '<div class="toolbar"><a class="button primary" href="#coach/session/new">+ Create session</a><a class="button" href="#coach/athlete/new">+ Athlete</a><a class="button" href="#coach/exercise/new">+ Exercise</a><a class="button" href="#coach/duplicate-period">⧉ Duplicate training period</a></div>' +
     '<section class="card tight"><div class="split"><div><h2>Athlete entry codes</h2><p class="subtle">Manage training codes for ' + athleteAgeGroups.join(', ') + '.</p></div><a class="button small" href="#coach/access-codes">Manage</a></div></section>' +
-    scheduledTrainingsCard(month, calendar, "coach/dashboard") +
-    '<section class="card"><h2>Scheduled team sessions</h2>' + (calendar.map((item) => dashboardSessionRow(item.session.id, item.session.name, esc(shortDate(item.session.session_date)) + ' · ' + esc(item.teams.map(teamLabel).join(', ') || 'Individual assignments'))).join('') || '<p class="subtle">No sessions match the current filters this month.</p>') + '</section>' +
-    '<section class="card"><h2>Today’s sessions</h2>' + (todayItems.map((item) => dashboardSessionRow(item.session.id, item.session.name, '<span class="muted">' + (item.session.estimated_duration_minutes || "—") + " min · " + esc(item.session.description || "No description") + '</span>')).join("") || '<p class="subtle">No sessions match the current filters today.</p>') + "</section>", true);
+    scheduledTrainingsCard(month, calendar, "coach/dashboard", teams) +
+    '<section class="card"><h2>Scheduled team sessions</h2>' + (calendar.map((item) => dashboardSessionRow(item.session.id, item.session.name, esc(shortDate(item.session.session_date)) + ' · ' + teamNamesWithDots(item.teams))).join('') || '<p class="subtle">No sessions match the current filters this month.</p>') + '</section>' +
+    '<section class="card"><h2>Today’s sessions</h2>' + (todayItems.map((item) => dashboardSessionRow(item.session.id, item.session.name, teamNamesWithDots(item.teams) + ' · <span class="muted">' + (item.session.estimated_duration_minutes || "—") + " min · " + esc(item.session.description || "No description") + '</span>')).join("") || '<p class="subtle">No sessions match the current filters today.</p>') + "</section>", true);
 }
 function coachAccessCodes() {
   const cards = athleteAgeGroups.map((ageGroup) => '<section class="card"><div class="split"><div><div class="eyebrow">' + ageGroup + '</div><h2>' + ageGroup + ' athlete code</h2></div><span class="pill">Four digits</span></div><form data-form="athlete-access-code" data-age-group="' + ageGroup + '" class="stack"><label>New ' + ageGroup + ' code<input class="pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><label>Confirm code<input class="pin-input" name="confirm_pin" type="tel" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label><button class="button primary full">Save ' + ageGroup + ' code</button></form></section>').join("");
