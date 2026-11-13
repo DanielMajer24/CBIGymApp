@@ -19,11 +19,11 @@ test('exercise search combobox narrows by partial match and keeps the chosen exe
   const input=page.locator('.combo-input').first();
   await input.fill('sprint');
   await expect(page.locator('.combo-option')).toHaveCount(1);
-  await expect(page.locator('.combo-option')).toHaveText('Fixture Sprint');
+  await expect(page.locator('.combo-option')).toContainText('Fixture Sprint');
   await input.fill('zzz-no-match');
   await expect(page.locator('.combo-empty')).toBeVisible();
   await input.fill('sprint');
-  await page.getByRole('button',{name:'Fixture Sprint',exact:true}).click();
+  await page.getByRole('option',{name:'Fixture Sprint',exact:false}).click();
   await expect(input).toHaveValue('Fixture Sprint');
   await page.getByLabel('Name',{exact:true}).fill('Combo Save Check');
   await page.getByLabel('Everyone active').check();
@@ -98,4 +98,63 @@ test('duplicate training period: preview, confirm, calendar reflects the copy, a
   await page.getByRole('link',{name:'Dashboard',exact:true}).click();
   await page.getByRole('button',{name:'Next month',exact:true}).click().catch(()=>{}); // no-op if the destination is still this month
   await expect(page.locator('.calendar-session')).toHaveCount(4);
+});
+
+test('dashboard session editing: edit button opens a modal pre-filled with the session, saves in place, and keeps the team filter',async({page})=>{
+  await admin(page);
+  await page.getByRole('combobox',{name:'Team',exact:true}).selectOption({label:'U18 · Test Marlins'});
+  await expect(page).toHaveURL(/team=/);
+  await page.getByRole('button',{name:'Edit Fixture Strength'}).first().click();
+  await expect(page.locator('.modal')).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Edit session'})).toBeVisible();
+  await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Fixture Strength');
+  await expect(page.locator('.combo-input')).toHaveCount(2); // the session's two programmed exercises
+  await page.getByLabel('Name',{exact:true}).fill('Fixture Strength Updated');
+  await page.getByRole('button',{name:'Save session',exact:true}).click();
+  await expect(page.locator('.modal-backdrop')).toHaveCount(0);
+  await expect(page).toHaveURL(/coach\/dashboard\?.*team=/); // no full-page navigation away
+  await expect(page.getByRole('combobox',{name:'Team',exact:true})).toHaveValue(/.+/); // team filter still selected
+  await expect(page.getByText('Fixture Strength Updated').first()).toBeVisible();
+});
+
+test('dashboard session editing: cancel discards unsaved changes without writing to the database',async({page})=>{
+  await admin(page);
+  await page.getByRole('button',{name:'Edit Fixture Strength'}).first().click();
+  await page.getByLabel('Name',{exact:true}).fill('Should not be saved');
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect(page.locator('.modal-backdrop')).toHaveCount(0);
+  await expect(page.getByText('Should not be saved')).toHaveCount(0);
+  await expect(page.getByText('Fixture Strength',{exact:true}).first()).toBeVisible();
+  await page.getByRole('button',{name:'Edit Fixture Strength'}).first().click();
+  await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Fixture Strength');
+});
+
+test('dashboard session editing: Escape closes the modal, a second Escape is needed after closing the combo dropdown first',async({page})=>{
+  await admin(page);
+  await page.getByRole('button',{name:'Edit Fixture Strength'}).first().click();
+  await expect(page.locator('.modal')).toBeVisible();
+  await page.locator('.combo-input').first().click();
+  await expect(page.locator('.combo-list').first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.combo-list').first()).toBeHidden();
+  await expect(page.locator('.modal')).toBeVisible(); // first Escape only closed the dropdown
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.modal-backdrop')).toHaveCount(0);
+});
+
+test('exercise combobox: arrow keys highlight an option and Enter selects it; category text is also searchable',async({page})=>{
+  await admin(page);
+  await page.goto('/#coach/session/new');
+  const input=page.locator('.combo-input').first();
+  await input.fill(''); // clear the row's default pre-filled exercise so all options show, not just a match for it
+  await expect(page.locator('.combo-option')).toHaveCount(2); // Fixture Squat, Fixture Sprint
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.combo-option').first()).toHaveClass(/is-active/);
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('.combo-option').nth(1)).toHaveClass(/is-active/);
+  await page.keyboard.press('Enter');
+  await expect(input).toHaveValue(/Fixture (Squat|Sprint)/);
+  await expect(page.locator('.combo-list').first()).toBeHidden();
+  await input.fill('other'); // both fixtures default to category "Other"
+  await expect(page.locator('.combo-option')).toHaveCount(2);
 });
