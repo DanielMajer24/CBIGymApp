@@ -154,6 +154,8 @@ textarea { min-height:88px; resize:vertical; }
 .calendar-session-title { overflow:hidden; font-size:.66rem; font-weight:850; line-height:1.08; text-overflow:ellipsis; white-space:nowrap; }
 .calendar-session-status { overflow:hidden; font-size:.55rem; font-weight:750; line-height:1; opacity:.82; text-overflow:ellipsis; white-space:nowrap; }
 .calendar-team { font-size:.6rem; line-height:1.2; overflow-wrap:anywhere; }
+.team-dot { display:inline-block; width:8px; height:8px; margin-right:5px; border-radius:50%; vertical-align:middle; }
+.team-legend .legend-item::before { content:none; }
 .calendar-session.tone-strength,.session-type.tone-strength { color:#fff; background:#634097; border-color:#9b77c6; }
 .calendar-session.tone-power,.session-type.tone-power { color:var(--orange-ink); background:var(--orange); border-color:#ffc166; }
 .calendar-session.tone-conditioning,.session-type.tone-conditioning { color:var(--cyan-ink); background:var(--cyan); border-color:#78d9f4; }
